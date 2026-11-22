@@ -194,7 +194,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     // MARK: - Actions
 
-    @objc private func openSettings() {
+    @objc func openSettings() {
         showSettings(tab: nil, editor: nil)
     }
 

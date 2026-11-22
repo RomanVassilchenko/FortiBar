@@ -126,29 +126,27 @@ struct MenuPanelView: View {
     // MARK: - Footer
 
     private var footer: some View {
-        GlassGroup(spacing: 8) {
-            HStack(spacing: 6) {
-                FooterButton(symbol: "plus", help: "Add server") {
-                    model.openSettings(.servers, .add)
-                }
-                FooterButton(symbol: "gearshape", help: "Settings") {
-                    model.openSettings(nil, nil)
-                }
-                .keyboardShortcut(",", modifiers: .command)
-                FooterButton(symbol: "doc.text", help: "Log") {
-                    model.openSettings(.log, nil)
-                }
-
-                Spacer()
-
-                FooterButton(symbol: "power", help: "Quit FortiBar") {
-                    model.quit()
-                }
-                .keyboardShortcut("q", modifiers: .command)
+        HStack(spacing: 2) {
+            FooterButton(symbol: "plus", help: "Add server") {
+                model.openSettings(.servers, .add)
             }
+            FooterButton(symbol: "gearshape", help: "Settings") {
+                model.openSettings(nil, nil)
+            }
+            .keyboardShortcut(",", modifiers: .command)
+            FooterButton(symbol: "doc.text", help: "Log") {
+                model.openSettings(.log, nil)
+            }
+
+            Spacer()
+
+            FooterButton(symbol: "power", help: "Quit FortiBar") {
+                model.quit()
+            }
+            .keyboardShortcut("q", modifiers: .command)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
     }
 }
 
@@ -178,8 +176,8 @@ extension VPNState {
 
 // MARK: - Tunnel Card
 
-/// One tunnel, or the idle state when `tunnel` is nil. A content surface: the glass is the
-/// status puck and the buttons, so nothing is stacked on glass.
+/// One tunnel, or the idle state when `tunnel` is nil. Flat on the popover's own glass:
+/// only the status puck and the buttons are glass.
 private struct TunnelCard: View {
     let tunnel: TunnelStatus?
     let iconStyle: MenuBarIconStyle
@@ -223,8 +221,6 @@ private struct TunnelCard: View {
                 details(of: tunnel)
             }
         }
-        .padding(12)
-        .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     private var statusPuck: some View {
@@ -233,11 +229,11 @@ private struct TunnelCard: View {
                 ProgressView().controlSize(.small)
             } else {
                 Image(systemName: state.iconSymbol(style: iconStyle))
-                    .font(.system(size: 17, weight: .medium))
+                    .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(tint)
             }
         }
-        .frame(width: 40, height: 40)
+        .frame(width: 36, height: 36)
         .glassSurface(in: Circle(), tint: tint)
     }
 
@@ -261,6 +257,7 @@ private struct TunnelCard: View {
         .font(.caption)
         .foregroundStyle(.secondary)
         .textSelection(.enabled)
+        .padding(.leading, 48)
     }
 }
 
@@ -327,8 +324,6 @@ private struct SetupBanner: View {
                 .glassButtonStyle()
                 .controlSize(.small)
         }
-        .padding(10)
-        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
@@ -409,17 +404,20 @@ private struct FooterButton: View {
     let help: String
     let action: () -> Void
 
+    @State private var hovering = false
+
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 14))
-                .frame(width: 30, height: 30)
-                .contentShape(Circle())
+                .frame(width: 30, height: 28)
+                .background(hovering ? Color.primary.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
-        .glassSurface(in: Circle(), interactive: true)
         .help(help)
         .accessibilityLabel(help)
+        .onHover { hovering = $0 }
     }
 }

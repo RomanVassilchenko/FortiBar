@@ -2,8 +2,26 @@ import SwiftUI
 import Combine
 import ServiceManagement
 
-enum SettingsTab {
+enum SettingsTab: CaseIterable {
     case servers, permission, general, log
+
+    var title: String {
+        switch self {
+        case .servers: return "Servers"
+        case .permission: return "Permission"
+        case .general: return "General"
+        case .log: return "Log"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .servers: return "server.rack"
+        case .permission: return "lock.shield"
+        case .general: return "gearshape"
+        case .log: return "doc.text"
+        }
+    }
 }
 
 /// Asks the settings window to open the server editor, e.g. from the menu bar panel.
@@ -28,32 +46,20 @@ struct SettingsView: View {
     }
     
     var body: some View {
-        TabView(selection: $selectedTab) {
-            serversTab
-                .tabItem {
-                    Label("Servers", systemImage: "server.rack")
+        VStack(spacing: 0) {
+            tabBar
+            Divider()
+            Group {
+                switch selectedTab {
+                case .servers: serversTab
+                case .permission: permissionTab
+                case .general: generalTab
+                case .log: logTab
                 }
-                .tag(SettingsTab.servers)
-            
-            permissionTab
-                .tabItem {
-                    Label("Permission", systemImage: "lock.shield")
-                }
-                .tag(SettingsTab.permission)
-            
-            generalTab
-                .tabItem {
-                    Label("General", systemImage: "gearshape")
-                }
-                .tag(SettingsTab.general)
-            
-            logTab
-                .tabItem {
-                    Label("Log", systemImage: "doc.text")
-                }
-                .tag(SettingsTab.log)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 540, height: 460)
+        .frame(width: 540, height: 660)
         .onReceive(NotificationCenter.default.publisher(for: .showSettingsTab)) { notification in
             if let tab = notification.object as? SettingsTab {
                 selectedTab = tab
@@ -95,6 +101,28 @@ struct SettingsView: View {
         }
     }
     
+    /// Toolbar-style tabs, like the settings windows of system apps.
+    private var tabBar: some View {
+        HStack(spacing: 4) {
+            ForEach(SettingsTab.allCases, id: \.self) { tab in
+                Button { selectedTab = tab } label: {
+                    VStack(spacing: 3) {
+                        Image(systemName: tab.symbol).font(.system(size: 18))
+                        Text(tab.title).font(.caption)
+                    }
+                    .frame(width: 80, height: 48)
+                    .foregroundStyle(selectedTab == tab ? Color.accentColor : .secondary)
+                    .background(selectedTab == tab ? Color.primary.opacity(0.1) : .clear,
+                                in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+    }
+
     private func openEditor(_ request: ServerEditorRequest) {
         selectedTab = .servers
         switch request {
@@ -335,8 +363,12 @@ struct SettingsView: View {
         Form {
             Section("openfortivpn Binary") {
                 HStack {
-                    TextField("Path:", text: $viewModel.openfortivpnPath)
-                        .font(.system(.body, design: .monospaced))
+                    LabeledContent("Path:") {
+                        TextField("", text: $viewModel.openfortivpnPath)
+                            .labelsHidden()
+                            .font(.system(.body, design: .monospaced))
+                            .multilineTextAlignment(.trailing)
+                    }
                     
                     Button("Browse...") {
                         let panel = NSOpenPanel()
@@ -576,9 +608,12 @@ struct ServerEditView: View {
                     .frame(width: 280)
                 SecureField("Password:", text: $password)
                     .frame(width: 280)
-                TextField("Certificate:", text: $trustedCert, prompt: Text("Trusted on first connect"))
-                    .frame(width: 280)
-                    .font(.system(size: 11, design: .monospaced))
+                LabeledContent("Certificate:") {
+                    TextField("", text: $trustedCert, prompt: Text("Trusted on first connect"))
+                        .labelsHidden()
+                        .font(.system(size: 11, design: .monospaced))
+                        .frame(width: 280)
+                }
                 LabeledContent("Icon:") {
                     HStack(spacing: 4) {
                         ForEach(VPNServer.iconChoices, id: \.self) { choice in
@@ -607,10 +642,14 @@ struct ServerEditView: View {
                         .help("Reconnects when the tunnel drops, e.g. after a network change, until you disconnect")
                     Toggle("Don't change routes or DNS", isOn: $noRoutesDNS)
                         .help("Runs openfortivpn with --no-routes --no-dns")
-                    TextField("Static routes:", text: $staticRoutes, prompt: Text("10.20.30.0/24"), axis: .vertical)
-                        .font(.system(size: 11, design: .monospaced))
-                        .lineLimit(2...4)
-                        .help("One CIDR per line, routed through this tunnel's ppp interface while it is up")
+                    LabeledContent("Static routes:") {
+                        TextField("", text: $staticRoutes, prompt: Text("10.20.30.0/24"), axis: .vertical)
+                            .labelsHidden()
+                            .font(.system(size: 11, design: .monospaced))
+                            .lineLimit(2...4)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    .help("One CIDR per line, routed through this tunnel's ppp interface while it is up")
                 } header: {
                     Text("Advanced")
                 } footer: {
@@ -649,7 +688,7 @@ struct ServerEditView: View {
             }
             .padding()
         }
-        .frame(width: 440, height: 600)
+        .frame(width: 440, height: 680)
         .onAppear {
             if let server = server {
                 name = server.name

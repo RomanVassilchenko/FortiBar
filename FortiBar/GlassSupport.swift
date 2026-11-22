@@ -1,7 +1,7 @@
 import SwiftUI
 
 // Liquid Glass (macOS 26) with a material fallback before.
-// Glass is kept for the control layer (buttons, the status puck), never stacked on glass.
+// Glass is kept for the few controls that need it (status puck, buttons), never stacked on glass.
 
 extension View {
     /// Liquid Glass in `shape`, or a thin material before macOS 26.
@@ -26,20 +26,6 @@ extension View {
             }
         } else {
             self.buttonStyle(.bordered)
-        }
-    }
-}
-
-/// Lets neighbouring glass shapes blend and share one rendering pass on macOS 26.
-struct GlassGroup<Content: View>: View {
-    var spacing: CGFloat = 8
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        if #available(macOS 26.0, *) {
-            GlassEffectContainer(spacing: spacing) { content }
-        } else {
-            content
         }
     }
 }

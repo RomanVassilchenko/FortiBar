@@ -1,7 +1,7 @@
 """Animated demo of the FortiBar menu bar panel, with example data.
 
 Draws every frame as SVG (same layout as MenuPanelView.swift: 320pt wide, 12pt padding,
-40pt glass status puck, glass buttons), rasterizes them at 2x with Quick Look and assembles the GIF with ffmpeg.
+36pt glass status puck, glass buttons, flat content), rasterizes them at 2x with Quick Look and assembles the GIF with ffmpeg.
 Story: click the menu bar icon, the panel opens, Connect on "Office VPN", connecting, connected.
 
 Requires macOS (qlmanage) and ffmpeg (brew install ffmpeg).
@@ -18,13 +18,13 @@ import tempfile
 from pathlib import Path
 
 W = 320
-M = 28  # side margin; also keeps the canvas at least as wide as tall (Quick Look renders a square)
+M = 18  # side margin; keep the canvas at least as wide as tall (Quick Look renders a square)
 ARROW_H = 10
 ARROW_HALF = 12
 CANVAS_W = W + 2 * M
 MENU_H = 24             # macOS menu bar
 PANEL_TOP = MENU_H + 4  # popover arrow tip, just below the menu bar
-CANVAS_H = PANEL_TOP + ARROW_H + 319 + 18   # tallest panel (connected) plus bottom margin
+CANVAS_H = PANEL_TOP + ARROW_H + 285 + 18   # tallest panel (connected) plus bottom margin
 ICON_X = M + W / 2      # status item centred above the popover arrow
 ICON_Y = MENU_H / 2
 
@@ -96,7 +96,7 @@ def spinner(cx, cy, angle):
 
 
 def card_height(mode):
-    return 90 if mode == "connected" else 64
+    return 62 if mode == "connected" else 36
 
 
 def list_top(mode):
@@ -125,34 +125,32 @@ def glass_capsule(x, y, w, h, tint=None):
 def panel(mode, hover=False, pressed=False, angle=0, elapsed="00:00:01"):
     out = []
     tint = {"connected": GREEN, "connecting": ORANGE}.get(mode, DIM)
-    ch = card_height(mode)
-    # status card: a plain tinted content surface, the glass is the puck and the buttons
-    out.append(f'<rect x="12" y="12" width="{W - 24}" height="{ch}" rx="18" fill="{tint}" fill-opacity="0.08"/>')
-    out.append(glass_circle(44, 44, 20, tint))
+    # flat header on the popover's own glass: only the puck and the buttons are glass
+    out.append(glass_circle(30, 30, 18, tint))
     if mode == "connecting":
-        out.append(spinner(44, 44, angle))
+        out.append(spinner(30, 30, angle))
     else:
-        out.append(icon("lock" if mode == "connected" else "lock-open", 44, 44, tint, sw=1.6, scale=1.3))
+        out.append(icon("lock" if mode == "connected" else "lock-open", 30, 30, tint, sw=1.6, scale=1.15))
 
     if mode == "disconnected":
-        out.append(text(76, 40, "Not connected", 14, weight=600))
-        out.append(text(76, 57, "Choose a server to connect", 11.5, DIM))
+        out.append(text(60, 27, "Not connected", 14, weight=600))
+        out.append(text(60, 43, "Choose a server to connect", 11.5, DIM))
     else:
-        out.append(text(76, 40, "Office VPN", 14, weight=600))
+        out.append(text(60, 27, "Office VPN", 14, weight=600))
         sub = "Connecting…" if mode == "connecting" else f"Connected · {elapsed}"
-        out.append(text(76, 57, sub, 11.5, DIM, extra='font-variant-numeric="tabular-nums"'))
+        out.append(text(60, 43, sub, 11.5, DIM, extra='font-variant-numeric="tabular-nums"'))
         if mode == "connecting":
             bw, label, btint = 64, "Cancel", None
         else:
             bw, label, btint = 90, "Disconnect", RED
-        bx = W - 24 - bw
-        out.append(glass_capsule(bx, 32, bw, 24, btint))
-        out.append(text(bx + bw / 2, 48.5, label, 12.5, "#fff" if btint else INK, 500, "middle"))
+        bx = W - 12 - bw
+        out.append(glass_capsule(bx, 18, bw, 24, btint))
+        out.append(text(bx + bw / 2, 34.5, label, 12.5, "#fff" if btint else INK, 500, "middle"))
         if mode == "connected":
-            out.append(icon("globe", 32, 80, DIM, sw=1.3))
-            out.append(text(44, 84, "10.212.134.5", 11.5, DIM))
-            out.append(icon("plug", 132, 80, DIM, sw=1.3))
-            out.append(text(144, 84, "ppp0", 11.5, DIM))
+            out.append(icon("globe", 68, 66, DIM, sw=1.3))
+            out.append(text(80, 70, "10.212.134.5", 11.5, DIM))
+            out.append(icon("plug", 168, 66, DIM, sw=1.3))
+            out.append(text(180, 70, "ppp0", 11.5, DIM))
 
     y = list_top(mode)
     out.append(f'<path d="M0 {y}H{W}" stroke="{DIVIDER}"/>')
@@ -176,13 +174,10 @@ def panel(mode, hover=False, pressed=False, angle=0, elapsed="00:00:01"):
     y = row_top(len(SERVERS), mode) - 2 + 8
 
     out.append(f'<path d="M0 {y}H{W}" stroke="{DIVIDER}"/>')
-    fy = y + 23
-    for cx, glyph in ((25, "plus"), (61, "gear"), (97, "doc"), (W - 25, "power")):
-        out.append(f'<circle cx="{cx}" cy="{fy}" r="15" fill="rgba(255,255,255,0.08)"/>')
-        out.append(f'<circle cx="{cx}" cy="{fy}" r="15" fill="url(#shine)"/>')
-        out.append(f'<circle cx="{cx}" cy="{fy}" r="14.5" fill="none" stroke="rgba(255,255,255,0.22)"/>')
+    fy = y + 20
+    for cx, glyph in ((23, "plus"), (55, "gear"), (87, "doc"), (W - 23, "power")):
         out.append(icon(glyph, cx, fy, DIM, sw=1.4))
-    return out, y + 46
+    return out, y + 40
 
 
 def cursor(x, y, pressed=False):

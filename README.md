@@ -16,8 +16,14 @@ A native macOS menu bar app (Liquid Glass on macOS 26, a regular material before
 
 Passwords are stored in the macOS Keychain.
 
-<img src="docs/assets/fortibar-panel-demo.gif" width="376" alt="Click the FortiBar menu bar icon, then Connect on a server: the panel shows Connecting and then Connected with the tunnel IP">
+<img src="docs/assets/fortibar-panel-demo.gif" width="356" alt="Click the FortiBar menu bar icon, then Connect on a server: the panel shows Connecting and then Connected with the tunnel IP">
 
+
+<p>
+<img src="docs/assets/screenshot-servers.png" width="320" alt="Settings, Servers tab">
+<img src="docs/assets/screenshot-general.png" width="320" alt="Settings, General tab">
+<img src="docs/assets/screenshot-editor.png" width="320" alt="The server editor">
+</p>
 
 ## Installation
 
