@@ -1,5 +1,5 @@
 # FortiBar
-![macOS 13+](https://img.shields.io/badge/macOS-13%2B-blue)
+![macOS 15+](https://img.shields.io/badge/macOS-15%2B-blue)
 ![Swift](https://img.shields.io/badge/Swift-5-orange)
 ![License: GPL v3](https://img.shields.io/badge/license-GPLv3-green)
 
