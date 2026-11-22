@@ -1,5 +1,5 @@
 /* ============================================================
-   OpenFortiMac landing page scripts
+   FortiBar landing page scripts
    ============================================================ */
 
 (function () {
