@@ -12,11 +12,11 @@
 
 ---
 
-A native macOS menu bar app for managing [openfortivpn](https://github.com/adrienverge/openfortivpn) connections. Built with Swift and SwiftUI, it sits in your menu bar and lets you connect/disconnect with a single click, with several simultaneous tunnels, auto-reconnect and a command line tool.
+A native macOS menu bar app (Liquid Glass on macOS 26, a regular material on macOS 15) for managing [openfortivpn](https://github.com/adrienverge/openfortivpn) connections. Built with Swift and SwiftUI, it sits in your menu bar and lets you connect/disconnect with a single click, with several simultaneous tunnels, auto-reconnect and a command line tool.
 
 Passwords are stored in the macOS Keychain.
 
-<img src="docs/assets/fortibar-panel-demo.gif" width="356" alt="Click the FortiBar menu bar icon, then Connect on a server: the panel shows Connecting and then Connected with the tunnel IP">
+<img src="docs/assets/fortibar-panel-demo.gif" width="376" alt="Click the FortiBar menu bar icon, then Connect on a server: the panel shows Connecting and then Connected with the tunnel IP">
 
 
 ## Installation
@@ -176,7 +176,7 @@ Optional fields, written only when used:
 
 Passwords are **not** stored in this file — they live in the macOS Keychain.
 
-The `trusted_cert` field is optional. If omitted, the app uses `--trusted-cert=any`.
+The `trusted_cert` field holds the SHA-256 digest of the gateway certificate. You do not need to fill it in: when a server's certificate cannot be verified (self-signed or an internal CA), the first connection trusts it, saves the digest here and connects. From then on only that certificate is accepted, and a different one fails with a certificate error until you clear the field (Settings → server → Certificate, or `fortibar edit <server> --no-cert`) to trust the new one.
 
 ## Troubleshooting
 
@@ -185,6 +185,8 @@ The `trusted_cert` field is optional. If omitted, the app uses `--trusted-cert=a
 **"Administrator permission not set up"** — The sudo rule is missing or points to another openfortivpn path. Open Settings → Permission and click **Set Up…** (or **Update…**).
 
 **"FortiBar is damaged" / "cannot be opened"** — See [First launch](#first-launch).
+
+**"Certificate error"** — The gateway presents a different certificate than the one pinned on the first connection. If you expect that (the certificate was renewed), clear the server's Certificate field; the next connection pins the new one. Otherwise do not connect: it can mean someone is intercepting the traffic.
 
 **Connection fails** — Open Settings → Log tab for details. 
 

@@ -1,7 +1,7 @@
 """Animated demo of the FortiBar menu bar panel, with example data.
 
 Draws every frame as SVG (same layout as MenuPanelView.swift: 320pt wide, 12pt padding,
-40pt status circle), rasterizes them at 2x with Quick Look and assembles the GIF with ffmpeg.
+40pt glass status puck, glass buttons), rasterizes them at 2x with Quick Look and assembles the GIF with ffmpeg.
 Story: click the menu bar icon, the panel opens, Connect on "Office VPN", connecting, connected.
 
 Requires macOS (qlmanage) and ffmpeg (brew install ffmpeg).
@@ -18,26 +18,27 @@ import tempfile
 from pathlib import Path
 
 W = 320
-M = 18
+M = 28  # side margin; also keeps the canvas at least as wide as tall (Quick Look renders a square)
 ARROW_H = 10
 ARROW_HALF = 12
 CANVAS_W = W + 2 * M
 MENU_H = 24             # macOS menu bar
 PANEL_TOP = MENU_H + 4  # popover arrow tip, just below the menu bar
-CANVAS_H = PANEL_TOP + ARROW_H + 283 + 18   # tallest panel (connected) plus bottom margin
+CANVAS_H = PANEL_TOP + ARROW_H + 319 + 18   # tallest panel (connected) plus bottom margin
 ICON_X = M + W / 2      # status item centred above the popover arrow
 ICON_Y = MENU_H / 2
 
 FONT = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif"
 PAGE = "#0c0e12"        # site background
-BG = "#2c2c2e"
-STROKE = "rgba(255,255,255,0.14)"
+BG = "url(#glass)"
+STROKE = "rgba(255,255,255,0.22)"
 DIVIDER = "rgba(255,255,255,0.10)"
 INK = "#f5f5f7"
 DIM = "#98989d"
 GREEN = "#30d158"
 ORANGE = "#ff9f0a"
 BLUE = "#0a84ff"
+RED = "#ff453a"
 
 SERVERS = [
     ("Office VPN", "vpn.example.com", "building"),
@@ -75,6 +76,7 @@ def icon(name, cx, cy, color, sw=1.5, scale=1.0):
         "plus": '<path d="M8 2.5v11M2.5 8h11"/>',
         "gear": f'<path d="{gear_path()}"/><circle cx="8" cy="8" r="2.2"/>',
         "doc": '<path d="M4 1.8h5.2l3 3V14a0.6 0.6 0 0 1-0.6 0.6H4a0.6 0.6 0 0 1-0.6-0.6V2.4A0.6 0.6 0 0 1 4 1.8z"/><path d="M9 1.8v3.2h3.2M5.6 8h4.8M5.6 10.5h4.8"/>',
+        "plug": '<path d="M6 1.8v3M10 1.8v3"/><rect x="4" y="4.8" width="8" height="4.2" rx="1.2"/><path d="M8 9v5"/>',
         "power": '<path d="M8 1.8v6"/><path d="M4.6 4.2a5.2 5.2 0 1 0 6.8 0"/>',
     }
     return g + shapes[name] + "</g>"
@@ -93,40 +95,66 @@ def spinner(cx, cy, angle):
     return "".join(out)
 
 
+def card_height(mode):
+    return 90 if mode == "connected" else 64
+
+
+def list_top(mode):
+    """Y of the divider under the status card (12 padding around it)."""
+    return 12 + card_height(mode) + 12
+
+
 def row_top(index, mode):
-    base = 88 if mode == "connected" else 64
-    return base + 27 + index * 42
+    return list_top(mode) + 27 + index * 42
+
+
+def glass_circle(cx, cy, r, tint):
+    # Liquid Glass puck: tinted fill, bright rim, soft highlight at the top
+    return (f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="{tint}" fill-opacity="0.28"/>'
+            f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="url(#shine)"/>'
+            f'<circle cx="{cx}" cy="{cy}" r="{r - 0.5}" fill="none" stroke="rgba(255,255,255,0.35)"/>')
+
+
+def glass_capsule(x, y, w, h, tint=None):
+    fill = (f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="{h / 2}" fill="{tint}" fill-opacity="0.92"/>' if tint
+            else f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="{h / 2}" fill="rgba(255,255,255,0.14)"/>')
+    return (fill + f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="{h / 2}" fill="url(#shine)"/>'
+            f'<rect x="{x + 0.5}" y="{y + 0.5}" width="{w - 1}" height="{h - 1}" rx="{h / 2 - 0.5}" fill="none" stroke="rgba(255,255,255,0.3)"/>')
 
 
 def panel(mode, hover=False, pressed=False, angle=0, elapsed="00:00:01"):
     out = []
     tint = {"connected": GREEN, "connecting": ORANGE}.get(mode, DIM)
-    out.append(f'<circle cx="32" cy="32" r="20" fill="{tint}" fill-opacity="0.18"/>')
+    ch = card_height(mode)
+    # status card: a plain tinted content surface, the glass is the puck and the buttons
+    out.append(f'<rect x="12" y="12" width="{W - 24}" height="{ch}" rx="18" fill="{tint}" fill-opacity="0.08"/>')
+    out.append(glass_circle(44, 44, 20, tint))
     if mode == "connecting":
-        out.append(spinner(32, 32, angle))
+        out.append(spinner(44, 44, angle))
     else:
-        out.append(icon("lock" if mode == "connected" else "lock-open", 32, 32, tint, sw=1.6, scale=1.3))
+        out.append(icon("lock" if mode == "connected" else "lock-open", 44, 44, tint, sw=1.6, scale=1.3))
 
     if mode == "disconnected":
-        out.append(text(64, 28, "Not connected", 14, weight=600))
-        out.append(text(64, 45, "Choose a server to connect", 11.5, DIM))
-        y = 64
+        out.append(text(76, 40, "Not connected", 14, weight=600))
+        out.append(text(76, 57, "Choose a server to connect", 11.5, DIM))
     else:
-        out.append(text(64, 28, "Office VPN", 14, weight=600))
+        out.append(text(76, 40, "Office VPN", 14, weight=600))
         sub = "Connecting…" if mode == "connecting" else f"Connected · {elapsed}"
-        out.append(text(64, 45, sub, 11.5, DIM, extra='font-variant-numeric="tabular-nums"'))
-        label, bw = ("Cancel", 64) if mode == "connecting" else ("Disconnect", 84)
-        bx = W - 12 - bw
-        out.append(f'<rect x="{bx}" y="21" width="{bw}" height="22" rx="5.5" fill="rgba(255,255,255,0.14)" stroke="rgba(255,255,255,0.08)"/>')
-        out.append(text(bx + bw / 2, 36, label, 12.5, INK, 500, "middle"))
-        y = 64
+        out.append(text(76, 57, sub, 11.5, DIM, extra='font-variant-numeric="tabular-nums"'))
+        if mode == "connecting":
+            bw, label, btint = 64, "Cancel", None
+        else:
+            bw, label, btint = 90, "Disconnect", RED
+        bx = W - 24 - bw
+        out.append(glass_capsule(bx, 32, bw, 24, btint))
+        out.append(text(bx + bw / 2, 48.5, label, 12.5, "#fff" if btint else INK, 500, "middle"))
         if mode == "connected":
-            out.append(icon("globe", 20, 69, DIM, sw=1.3))
-            out.append(text(32, 73, "10.212.134.5", 11.5, DIM))
-            out.append(icon("globe", 124, 69, DIM, sw=1.3))
-            out.append(text(136, 73, "vpn.example.com:443", 11.5, DIM))
-            y = 88
+            out.append(icon("globe", 32, 80, DIM, sw=1.3))
+            out.append(text(44, 84, "10.212.134.5", 11.5, DIM))
+            out.append(icon("plug", 132, 80, DIM, sw=1.3))
+            out.append(text(144, 84, "ppp0", 11.5, DIM))
 
+    y = list_top(mode)
     out.append(f'<path d="M0 {y}H{W}" stroke="{DIVIDER}"/>')
     out.append(text(16, y + 20, "Servers", 11, DIM))
     for i, (name, host, glyph) in enumerate(SERVERS):
@@ -136,7 +164,7 @@ def panel(mode, hover=False, pressed=False, angle=0, elapsed="00:00:01"):
         g = f'<g opacity="{0.45 if dimmed else 1}">'
         if mode == "disconnected" and i == 0 and (hover or pressed):
             fill = 0.16 if pressed else 0.08
-            g += f'<rect x="8" y="{top}" width="{W - 16}" height="40" rx="6" fill="rgba(255,255,255,{fill})"/>'
+            g += f'<rect x="6" y="{top}" width="{W - 12}" height="40" rx="12" fill="rgba(255,255,255,{fill})"/>'
         g += icon(glyph, 26, top + 20, GREEN if active else DIM)
         g += text(46, top + 18, name, 13.5)
         g += text(46, top + 33, host, 11.5, DIM)
@@ -148,10 +176,13 @@ def panel(mode, hover=False, pressed=False, angle=0, elapsed="00:00:01"):
     y = row_top(len(SERVERS), mode) - 2 + 8
 
     out.append(f'<path d="M0 {y}H{W}" stroke="{DIVIDER}"/>')
-    fy = y + 18
-    for cx, glyph in ((22, "plus"), (54, "gear"), (86, "doc"), (W - 22, "power")):
+    fy = y + 23
+    for cx, glyph in ((25, "plus"), (61, "gear"), (97, "doc"), (W - 25, "power")):
+        out.append(f'<circle cx="{cx}" cy="{fy}" r="15" fill="rgba(255,255,255,0.08)"/>')
+        out.append(f'<circle cx="{cx}" cy="{fy}" r="15" fill="url(#shine)"/>')
+        out.append(f'<circle cx="{cx}" cy="{fy}" r="14.5" fill="none" stroke="rgba(255,255,255,0.22)"/>')
         out.append(icon(glyph, cx, fy, DIM, sw=1.4))
-    return out, y + 36
+    return out, y + 46
 
 
 def cursor(x, y, pressed=False):
@@ -201,7 +232,7 @@ def menubar(state, highlighted):
 def popover_svg(mode, opacity=1.0, dy=0.0, **kw):
     body, h = panel(mode, **kw)
     ax = W / 2
-    r = 12
+    r = 20
     outline = (f"M{r} {ARROW_H} H{ax - ARROW_HALF} L{ax} 0 L{ax + ARROW_HALF} {ARROW_H} H{W - r} "
                f"A{r} {r} 0 0 1 {W} {ARROW_H + r} V{ARROW_H + h - r} A{r} {r} 0 0 1 {W - r} {ARROW_H + h} "
                f"H{r} A{r} {r} 0 0 1 0 {ARROW_H + h - r} V{ARROW_H + r} A{r} {r} 0 0 1 {r} {ARROW_H} Z")
@@ -214,7 +245,7 @@ def frame_svg(bar="disconnected", open_=False, popover=None, cur=None, pressed=F
     pop = popover_svg(**popover) if popover else ""
     cursor_svg = cursor(*cur, pressed=pressed) if cur else ""
     return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{CANVAS_W}" height="{CANVAS_H}" viewBox="0 0 {CANVAS_W} {CANVAS_H}" font-family="{FONT}">
-<defs><filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000" flood-opacity="0.45"/></filter></defs>
+<defs><linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a3c43"/><stop offset="1" stop-color="#26282e"/></linearGradient><linearGradient id="shine" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.22"/><stop offset="0.5" stop-color="#fff" stop-opacity="0"/></linearGradient><filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000" flood-opacity="0.45"/></filter></defs>
 <rect width="{CANVAS_W}" height="{CANVAS_H}" fill="{PAGE}"/>
 {menubar(bar, open_)}
 {pop}
@@ -239,7 +270,7 @@ def build_frames():
     click = (M + W - 44, row_y + 22)          # on the "Connect" label of Office VPN
     row_box = (M + 8, row_y, M + W - 8, row_y + 40)
     start = (CANVAS_W - 70, CANVAS_H - 90)
-    away = (M + 250, PANEL_TOP + ARROW_H + 172)  # empty side of the dimmed Home Lab row
+    away = (M + 250, PANEL_TOP + ARROW_H + 203)  # empty side of the dimmed Home Lab row
 
     def inside(p):
         return row_box[0] <= p[0] <= row_box[2] and row_box[1] <= p[1] <= row_box[3]
