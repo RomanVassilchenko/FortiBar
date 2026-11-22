@@ -123,6 +123,8 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                     Button("Add server") { showingAddServer = true }
+                        .glassButtonStyle(prominent: true)
+                        .controlSize(.large)
                         .padding(.top, 4)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

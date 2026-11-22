@@ -33,87 +33,41 @@ struct MenuPanelView: View {
 
     // MARK: - Tunnel cards (one per active tunnel)
 
-    @ViewBuilder
     private var tunnelCards: some View {
-        if vpn.tunnels.isEmpty {
-            TunnelCard(
-                title: "Not connected",
-                subtitle: AnyView(Text("Choose a server to connect")),
-                icon: VPNState.disconnected.iconSymbol(style: model.iconStyle),
-                tint: .secondary,
-                busy: false,
-                details: nil,
-                onDisconnect: nil,
-                disconnectShortcut: false
-            )
-        } else {
-            VStack(spacing: 8) {
-                ForEach(vpn.tunnels) { tunnel in
-                    TunnelCard(
-                        title: tunnel.serverName,
-                        subtitle: TunnelCard.subtitle(for: tunnel),
-                        icon: tunnel.state.iconSymbol(style: model.iconStyle),
-                        tint: tunnel.state.tint,
-                        busy: tunnel.isBusy,
-                        details: tunnelDetails(tunnel),
-                        onDisconnect: { model.disconnect(serverID: tunnel.serverID) },
-                        // ⌘D stays unambiguous: only with a single tunnel
-                        disconnectShortcut: vpn.tunnels.count == 1
-                    )
-                }
+        VStack(spacing: 8) {
+            if vpn.tunnels.isEmpty {
+                TunnelCard(tunnel: nil, iconStyle: model.iconStyle, onDisconnect: nil, disconnectShortcut: false)
+            }
+            ForEach(vpn.tunnels) { tunnel in
+                TunnelCard(
+                    tunnel: tunnel,
+                    iconStyle: model.iconStyle,
+                    onDisconnect: { model.disconnect(serverID: tunnel.serverID) },
+                    // ⌘D stays unambiguous: only with a single tunnel
+                    disconnectShortcut: vpn.tunnels.count == 1
+                )
             }
         }
-    }
-
-    private func tunnelDetails(_ tunnel: TunnelStatus) -> [TunnelCardDetail]? {
-        guard tunnel.isConnected else { return nil }
-        var details: [TunnelCardDetail] = []
-        if let ip = tunnel.assignedIP {
-            details.append(TunnelCardDetail(systemImage: "network", text: ip))
-        }
-        if let iface = tunnel.interface {
-            details.append(TunnelCardDetail(systemImage: "cable.connector", text: iface))
-        }
-        if !tunnel.routes.isEmpty {
-            details.append(TunnelCardDetail(systemImage: "arrow.triangle.branch", text: tunnel.routes.joined(separator: ", ")))
-        }
-        return details.isEmpty ? nil : details
     }
 
     // MARK: - Setup banner
 
     private var setupBanner: SetupBanner? {
+        func banner(_ title: String, _ detail: String, _ action: String, tab: SettingsTab = .permission) -> SetupBanner {
+            SetupBanner(title: title, detail: detail, action: action) { model.openSettings(tab, nil) }
+        }
+
         switch model.sudoersStatus {
         case .missing:
-            return SetupBanner(
-                title: "Administrator permission not set up",
-                detail: "openfortivpn needs it to start the tunnel.",
-                action: "Set up"
-            ) { model.openSettings(.permission, nil) }
+            return banner("Administrator permission not set up", "openfortivpn needs it to start the tunnel.", "Set up")
         case .legacyRule:
-            return SetupBanner(
-                title: "Permission rule needs a one-time update",
-                detail: "FortiBar renamed its sudo rule.",
-                action: "Update"
-            ) { model.openSettings(.permission, nil) }
+            return banner("Permission rule needs a one-time update", "FortiBar renamed its sudo rule.", "Update")
         case .routesMissing:
-            return SetupBanner(
-                title: "Static routes need permission",
-                detail: "Update the rule so routes can be added.",
-                action: "Update"
-            ) { model.openSettings(.permission, nil) }
+            return banner("Static routes need permission", "Update the rule so routes can be added.", "Update")
         case .outdated:
-            return SetupBanner(
-                title: "Permission points to another openfortivpn",
-                detail: "Update the rule after moving openfortivpn.",
-                action: "Update"
-            ) { model.openSettings(.permission, nil) }
+            return banner("Permission points to another openfortivpn", "Update the rule after moving openfortivpn.", "Update")
         case .binaryNotFound:
-            return SetupBanner(
-                title: "openfortivpn not found",
-                detail: "Install it with brew install openfortivpn.",
-                action: "Settings"
-            ) { model.openSettings(.general, nil) }
+            return banner("openfortivpn not found", "Install it with brew install openfortivpn.", "Settings", tab: .general)
         default:
             return nil
         }
@@ -166,33 +120,35 @@ struct MenuPanelView: View {
                 }
             }
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 6)
     }
 
     // MARK: - Footer
 
     private var footer: some View {
-        HStack(spacing: 4) {
-            FooterButton(symbol: "plus", help: "Add server") {
-                model.openSettings(.servers, .add)
-            }
-            FooterButton(symbol: "gearshape", help: "Settings") {
-                model.openSettings(nil, nil)
-            }
-            .keyboardShortcut(",", modifiers: .command)
-            FooterButton(symbol: "doc.text", help: "Log") {
-                model.openSettings(.log, nil)
-            }
+        GlassGroup(spacing: 8) {
+            HStack(spacing: 6) {
+                FooterButton(symbol: "plus", help: "Add server") {
+                    model.openSettings(.servers, .add)
+                }
+                FooterButton(symbol: "gearshape", help: "Settings") {
+                    model.openSettings(nil, nil)
+                }
+                .keyboardShortcut(",", modifiers: .command)
+                FooterButton(symbol: "doc.text", help: "Log") {
+                    model.openSettings(.log, nil)
+                }
 
-            Spacer()
+                Spacer()
 
-            FooterButton(symbol: "power", help: "Quit FortiBar") {
-                model.quit()
+                FooterButton(symbol: "power", help: "Quit FortiBar") {
+                    model.quit()
+                }
+                .keyboardShortcut("q", modifiers: .command)
             }
-            .keyboardShortcut("q", modifiers: .command)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
     }
 }
 
@@ -222,112 +178,126 @@ extension VPNState {
 
 // MARK: - Tunnel Card
 
-private struct TunnelCardDetail {
-    let systemImage: String
-    let text: String
-}
-
+/// One tunnel, or the idle state when `tunnel` is nil. A content surface: the glass is the
+/// status puck and the buttons, so nothing is stacked on glass.
 private struct TunnelCard: View {
-    let title: String
-    let subtitle: AnyView
-    let icon: String
-    let tint: Color
-    let busy: Bool
-    let details: [TunnelCardDetail]?
+    let tunnel: TunnelStatus?
+    let iconStyle: MenuBarIconStyle
     let onDisconnect: (() -> Void)?
     let disconnectShortcut: Bool
+
+    private var state: VPNState { tunnel?.state ?? .disconnected }
+    private var busy: Bool { tunnel?.isBusy ?? false }
+    private var tint: Color { state.tint }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(tint.opacity(0.18))
-                    if busy {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Image(systemName: icon)
-                            .font(.system(size: 17, weight: .medium))
-                            .foregroundColor(tint)
-                    }
-                }
-                .frame(width: 40, height: 40)
+                statusPuck
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
+                    Text(tunnel?.serverName ?? "Not connected")
                         .font(.headline)
                         .lineLimit(1)
-                    subtitle
+                    TunnelSubtitle(tunnel: tunnel)
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
 
                 Spacer(minLength: 8)
 
-                if let onDisconnect = onDisconnect {
+                if let onDisconnect {
                     if busy {
                         Button("Cancel", action: onDisconnect)
+                            .glassButtonStyle()
                     } else {
                         Button("Disconnect", action: onDisconnect)
+                            .glassButtonStyle(prominent: true)
+                            .tint(.red)
                             .keyboardShortcut(disconnectShortcut ? KeyboardShortcut("d", modifiers: .command) : nil)
                     }
                 }
             }
 
-            if let details = details {
-                // Short facts side by side, routes (possibly long) on their own line
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 12) {
-                        ForEach(details.filter { $0.systemImage != "arrow.triangle.branch" }, id: \.systemImage) { detail in
-                            Label(detail.text, systemImage: detail.systemImage)
-                        }
-                    }
-                    ForEach(details.filter { $0.systemImage == "arrow.triangle.branch" }, id: \.systemImage) { detail in
-                        Label(detail.text, systemImage: detail.systemImage)
-                            .lineLimit(2)
-                    }
-                }
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .textSelection(.enabled)
+            if let tunnel, tunnel.isConnected {
+                details(of: tunnel)
             }
         }
         .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color.primary.opacity(0.04))
-        )
+        .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
-    static func subtitle(for tunnel: TunnelStatus) -> AnyView {
-        switch tunnel.state {
+    private var statusPuck: some View {
+        ZStack {
+            if busy {
+                ProgressView().controlSize(.small)
+            } else {
+                Image(systemName: state.iconSymbol(style: iconStyle))
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(tint)
+            }
+        }
+        .frame(width: 40, height: 40)
+        .glassSurface(in: Circle(), tint: tint)
+    }
+
+    /// Short facts side by side, routes (possibly long) on their own line.
+    @ViewBuilder
+    private func details(of tunnel: TunnelStatus) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 12) {
+                if let ip = tunnel.assignedIP {
+                    Label(ip, systemImage: "network")
+                }
+                if let interface = tunnel.interface {
+                    Label(interface, systemImage: "cable.connector")
+                }
+            }
+            if !tunnel.routes.isEmpty {
+                Label(tunnel.routes.joined(separator: ", "), systemImage: "arrow.triangle.branch")
+                    .lineLimit(2)
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .textSelection(.enabled)
+    }
+}
+
+/// Status line under the tunnel name; connected and reconnecting tick every second.
+private struct TunnelSubtitle: View {
+    let tunnel: TunnelStatus?
+
+    var body: some View {
+        switch tunnel?.state ?? .disconnected {
         case .disconnected:
-            return AnyView(Text("Choose a server to connect"))
+            Text("Choose a server to connect")
         case .connecting:
-            return AnyView(Text("Connecting…"))
+            Text("Connecting…")
         case .disconnecting:
-            return AnyView(Text("Disconnecting…"))
+            Text("Disconnecting…")
         case .reconnecting(let date):
-            guard let date = date else {
-                return AnyView(Text("Waiting for the network…"))
+            if let date {
+                TimelineView(.periodic(from: Date(), by: 1)) { context in
+                    Text("Reconnecting in \(max(0, Int(date.timeIntervalSince(context.date).rounded(.up))))s…")
+                        .monospacedDigit()
+                }
+            } else {
+                Text("Waiting for the network…")
             }
-            return AnyView(TimelineView(.periodic(from: Date(), by: 1)) { context in
-                Text("Reconnecting in \(max(0, Int(date.timeIntervalSince(context.date).rounded(.up))))s…")
-                    .monospacedDigit()
-            })
         case .connected:
-            guard let since = tunnel.connectedSince else {
-                return AnyView(Text("Connected"))
+            if let since = tunnel?.connectedSince {
+                TimelineView(.periodic(from: since, by: 1)) { context in
+                    Text("Connected · \(Self.format(context.date.timeIntervalSince(since)))")
+                        .monospacedDigit()
+                }
+            } else {
+                Text("Connected")
             }
-            return AnyView(TimelineView(.periodic(from: since, by: 1)) { context in
-                Text("Connected · \(Self.format(context.date.timeIntervalSince(since)))")
-                    .monospacedDigit()
-            })
         }
     }
 
-    static func format(_ interval: TimeInterval) -> String {
+    private static func format(_ interval: TimeInterval) -> String {
         let seconds = max(0, Int(interval))
         return String(format: "%02d:%02d:%02d", seconds / 3600, (seconds % 3600) / 60, seconds % 60)
     }
@@ -344,23 +314,21 @@ private struct SetupBanner: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundColor(.orange)
+                .foregroundStyle(.orange)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.callout.weight(.medium))
                 Text(detail)
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
             Spacer(minLength: 4)
             Button(action, action: onAction)
+                .glassButtonStyle()
                 .controlSize(.small)
         }
         .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.orange.opacity(0.12))
-        )
+        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
@@ -375,66 +343,62 @@ private struct PanelServerRow: View {
     @State private var hovering = false
 
     private var stateText: String? {
-        guard let tunnel = tunnel else { return nil }
-        switch tunnel.state {
+        switch tunnel?.state {
         case .connecting: return "Connecting…"
         case .disconnecting: return "Disconnecting…"
         case .reconnecting: return "Reconnecting…"
         case .connected: return "Connected"
-        case .disconnected: return nil
+        case .disconnected, .none: return nil
         }
     }
 
-    private var tint: Color {
-        guard let tunnel = tunnel else { return .secondary }
-        return tunnel.state.tint
-    }
+    private var tint: Color { tunnel?.state.tint ?? .secondary }
 
     var body: some View {
         Button(action: onToggle) {
             HStack(spacing: 10) {
                 Image(systemName: server.iconName)
                     .frame(width: 20)
-                    .foregroundColor(tint == .secondary ? .secondary : tint)
+                    .foregroundStyle(tint)
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(server.name)
                         .lineLimit(1)
-                    if let stateText = stateText {
-                        Text("\(server.host) · \(stateText)")
-                            .font(.caption)
-                            .foregroundColor(.orange)
-                            .lineLimit(1)
-                    } else {
-                        Text(hasPassword ? server.host : "No password · click to edit")
-                            .font(.caption)
-                            .foregroundColor(hasPassword ? .secondary : .orange)
-                            .lineLimit(1)
-                    }
+                    subtitle
+                        .font(.caption)
+                        .lineLimit(1)
                 }
 
                 Spacer(minLength: 4)
 
-                if let tunnel = tunnel {
+                if let tunnel {
                     Circle()
                         .fill(tunnel.isConnected ? Color.green : Color.orange)
                         .frame(width: 8, height: 8)
                 } else if hovering {
                     Text(hasPassword ? "Connect" : "Edit")
                         .font(.caption.weight(.medium))
-                        .foregroundColor(.accentColor)
+                        .foregroundStyle(Color.accentColor)
                 }
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(hovering ? Color.primary.opacity(0.08) : Color.clear)
-            )
+            .background(hovering ? Color.primary.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
+    }
+
+    @ViewBuilder
+    private var subtitle: some View {
+        if let stateText {
+            Text("\(server.host) · \(stateText)").foregroundStyle(.orange)
+        } else if hasPassword {
+            Text(server.host).foregroundStyle(.secondary)
+        } else {
+            Text("No password · click to edit").foregroundStyle(.orange)
+        }
     }
 }
 
@@ -445,23 +409,17 @@ private struct FooterButton: View {
     let help: String
     let action: () -> Void
 
-    @State private var hovering = false
-
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 14))
-                .frame(width: 28, height: 24)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(hovering ? Color.primary.opacity(0.08) : Color.clear)
-                )
-                .contentShape(Rectangle())
+                .frame(width: 30, height: 30)
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .foregroundColor(.secondary)
+        .foregroundStyle(.secondary)
+        .glassSurface(in: Circle(), interactive: true)
         .help(help)
         .accessibilityLabel(help)
-        .onHover { hovering = $0 }
     }
 }
