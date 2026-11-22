@@ -97,7 +97,7 @@ SHA256=$(shasum -a 256 "$DMG_NAME" | awk '{print $1}')
 echo ""
 echo "✅ Done! Created: $DMG_NAME"
 echo ""
-echo "Homebrew cask values (for a tap cask named fortibar):"
+echo "Homebrew cask values (Casks/fortibar.rb in romanvassilchenko/homebrew-tap):"
 echo "  version \"$VERSION\""
 echo "  sha256 \"$SHA256\""
 

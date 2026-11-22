@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.5.1
+
+### Added
+- Homebrew install: `brew trust romanvassilchenko/tap && brew install --cask romanvassilchenko/tap/fortibar`. The cask installs openfortivpn, links the `fortibar` command, removes the sudo rule on uninstall, and is updated automatically with every release
+
 ## v1.5.0
 
 ### Changed
