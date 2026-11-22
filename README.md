@@ -21,6 +21,15 @@ Connect with one click from the menu bar, run several tunnels side by side, reco
 
 ## Installation
 
+### Homebrew (recommended)
+
+```bash
+brew trust romanvassilchenko/tap
+brew install --cask romanvassilchenko/tap/fortibar
+```
+
+This installs FortiBar and [openfortivpn](https://formulae.brew.sh/formula/openfortivpn) from the [romanvassilchenko/homebrew-tap](https://github.com/RomanVassilchenko/homebrew-tap) tap and links the `fortibar` command. Homebrew asks you to trust third-party taps once, which is what the first line does. Update with `brew upgrade --cask fortibar`: it quits FortiBar (closing its tunnels), so start it again afterwards.
+
 ### Download
 
 1. Install openfortivpn: `brew install openfortivpn`
@@ -98,7 +107,7 @@ Quitting FortiBar (⌘Q, logout or `SIGTERM`) disconnects every tunnel first, so
 
 ### Command line
 
-The app executable doubles as a command line tool. Link it into your `PATH`:
+The app executable doubles as a command line tool. Homebrew links it as `fortibar`; with the DMG, link it into your `PATH`:
 
 ```bash
 ln -s /Applications/FortiBar.app/Contents/MacOS/FortiBar /opt/homebrew/bin/fortibar
@@ -168,6 +177,15 @@ You do not need to fill in `trusted_cert`. When a gateway's certificate cannot b
 
 ## Uninstall
 
+With Homebrew:
+
+```bash
+brew uninstall --cask fortibar          # also removes /etc/sudoers.d/fortibar (asks for your password)
+brew uninstall --cask --zap fortibar    # also deletes settings and logs
+```
+
+Manually:
+
 1. Settings → Permission → **Remove**, then quit FortiBar.
 2. `rm -rf /Applications/FortiBar.app ~/Library/Application\ Support/FortiBar ~/Library/Logs/FortiBar`
 3. Delete the saved passwords in Keychain Access (service `com.romanvassilchenko.FortiBar.vpn`).
@@ -186,9 +204,9 @@ Then delete `/Applications/OpenFortiMac.app`.
 
 ## Releasing
 
-Bump `MARKETING_VERSION` in Xcode and add a `## vX.Y.Z` section to `CHANGELOG.md`. When `main` gets a version that has no tag yet, the [Release workflow](.github/workflows/release.yml) runs `./build_dmg.sh` to build a universal DMG signed with the "FortiBar Self-Signed" certificate, attests the build provenance, scans it on VirusTotal and publishes the `vX.Y.Z` release with the changelog section as notes. Pushing a tag with a suffix (`v1.4.0-rc.1`) publishes a pre-release; pull requests only build the DMG.
+Bump `MARKETING_VERSION` in Xcode and add a `## vX.Y.Z` section to `CHANGELOG.md`. When `main` gets a version that has no tag yet, the [Release workflow](.github/workflows/release.yml) runs `./build_dmg.sh` to build a universal DMG signed with the "FortiBar Self-Signed" certificate, attests the build provenance, scans it on VirusTotal and publishes the `vX.Y.Z` release with the changelog section as notes, then updates the cask in [homebrew-tap](https://github.com/RomanVassilchenko/homebrew-tap) through a pull request that it merges once `brew style` and `brew audit` pass. Pushing a tag with a suffix (`v1.4.0-rc.1`) publishes a pre-release and skips Homebrew; pull requests only build the DMG.
 
-Repository secrets: `SIGNING_CERT_P12`, `SIGNING_CERT_PASSWORD`, optionally `VIRUSTOTAL_API_KEY`; variable `EXPECTED_CERT_SHA1`. Keep a backup of the `.p12`: a new certificate changes the app's identity and macOS asks for Keychain access again.
+Repository secrets: `SIGNING_CERT_P12`, `SIGNING_CERT_PASSWORD`, `VIRUSTOTAL_API_KEY`, `HOMEBREW_TAP_TOKEN` (fine-grained token with Contents and Pull requests write access to `homebrew-tap` only); variable `EXPECTED_CERT_SHA1`. Keep a backup of the `.p12`: a new certificate changes the app's identity and macOS asks for Keychain access again.
 
 Tests: `xcodebuild test -project FortiBar.xcodeproj -scheme FortiBar -destination 'platform=macOS'`. The demo GIF is generated with `python3 scripts/make_panel_demo.py` (needs ffmpeg).
 
