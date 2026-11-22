@@ -574,7 +574,7 @@ struct ServerEditView: View {
                     .frame(width: 280)
                 SecureField("Password:", text: $password)
                     .frame(width: 280)
-                TextField("Certificate (optional):", text: $trustedCert)
+                TextField("Certificate:", text: $trustedCert, prompt: Text("Trusted on first connect"))
                     .frame(width: 280)
                     .font(.system(size: 11, design: .monospaced))
                 LabeledContent("Icon:") {

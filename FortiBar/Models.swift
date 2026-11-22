@@ -176,6 +176,15 @@ struct VPNServer: Codable, Identifiable, Hashable {
         }
     }
 
+    /// The same profile with the gateway certificate pinned (SHA-256 digest as openfortivpn prints it).
+    func pinning(certificate digest: String) -> VPNServer {
+        VPNServer(
+            name: name, host: host, port: port, username: username, password: password,
+            trustedCert: digest, icon: icon, id: id, noRoutesDNS: noRoutesDNS,
+            staticRoutes: staticRoutes, autoConnect: autoConnect, autoReconnect: autoReconnect
+        )
+    }
+
     /// Routes that passed the CIDR check: only these are ever handed to /sbin/route.
     var validatedStaticRoutes: [String] {
         staticRoutes.filter { Self.isValidCIDR($0) }

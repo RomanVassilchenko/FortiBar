@@ -247,7 +247,7 @@ extension CommandLineTool {
             ("Gateway", "\(server.host):\(server.port)"),
             ("User", server.username),
             ("Password", hasPassword ? "saved in Keychain" : "not set"),
-            ("Certificate", server.trustedCert ?? "any (not pinned)"),
+            ("Certificate", server.trustedCert ?? "not pinned yet (trusted on first connect)"),
             ("Routes/DNS", server.noRoutesDNS ? "left untouched (--no-routes --no-dns)" : "managed by openfortivpn"),
             ("Static routes", server.staticRoutes.isEmpty ? "-" : server.staticRoutes.joined(separator: ", ")),
             ("Auto-connect", server.autoConnect ? "yes" : "no"),

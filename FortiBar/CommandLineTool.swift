@@ -383,7 +383,7 @@ enum CommandLineTool {
 
         Server options:
           --host <host>  --port <port>  --user <user>  --icon <sf symbol>
-          --cert <sha256> | --no-cert         pin the gateway certificate (default: any)
+          --cert <sha256> | --no-cert         pin the gateway certificate (default: trusted on first connect)
           --password                          prompt for the password (saved in the Keychain)
           --password-stdin                    read the password from stdin
           --no-routes-dns | --routes-dns      pass --no-routes --no-dns (secondary tunnel)

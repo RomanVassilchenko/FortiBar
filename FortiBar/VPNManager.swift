@@ -62,6 +62,10 @@ private final class TunnelConnection {
     var failed = false
     /// Retrying cannot help (wrong credentials or certificate): no auto-reconnect
     var fatal = false
+    /// openfortivpn rejected an unpinned gateway certificate: its digest is on the next line
+    var awaitingCertificateDigest = false
+    /// The profile with the certificate pinned: the attempt is repeated with it once the process is gone
+    var retryServer: VPNServer?
 
     init(server: VPNServer, process: Process, pipe: Pipe, configPath: String) {
         self.server = server
@@ -225,9 +229,6 @@ class VPNManager: ObservableObject {
         }
 
         var arguments = ["-c", configURL.path]
-        if server.trustedCert?.isEmpty ?? true {
-            arguments.append("--trusted-cert=any")
-        }
         if server.noRoutesDNS {
             arguments += ["--no-routes", "--no-dns"]
         }
@@ -316,6 +317,21 @@ class VPNManager: ObservableObject {
         for line in output.components(separatedBy: .newlines) where !line.isEmpty {
             addLog(server.name, line)
 
+            // Trust on first use: an unpinned gateway certificate that fails validation is pinned
+            // and the attempt repeated. A pinned certificate that stops matching is an error.
+            if (server.trustedCert ?? "").isEmpty {
+                if line.contains("certificate digest is not in the local whitelist") {
+                    conn.awaitingCertificateDigest = true
+                    continue
+                }
+                if conn.awaitingCertificateDigest, let digest = Self.certificateDigest(in: line) {
+                    conn.awaitingCertificateDigest = false
+                    pinCertificate(digest, conn: conn)
+                    continue
+                }
+            }
+            if conn.retryServer != nil { continue }
+
             if let ip = Self.assignedAddress(in: line) {
                 updateTunnel(server.id) { $0.assignedIP = ip }
             }
@@ -335,6 +351,33 @@ class VPNManager: ObservableObject {
         }
     }
 
+    /// Extracts the digest from openfortivpn's "--trusted-cert <sha256>" hint.
+    static func certificateDigest(in line: String) -> String? {
+        guard let range = line.range(of: #"--trusted-cert\s+[0-9a-fA-F]{64}\b"#, options: .regularExpression) else {
+            return nil
+        }
+        return line[range].split(whereSeparator: \.isWhitespace).last.map { String($0).lowercased() }
+    }
+
+    /// Saves the certificate in the profile and repeats the attempt once the failed process is gone.
+    private func pinCertificate(_ digest: String, conn: TunnelConnection) {
+        let server = conn.server
+        let servers = ConfigManager.shared.config.servers
+        guard let index = servers.firstIndex(where: { $0.id == server.id }) else { return }
+
+        var updated = servers
+        updated[index] = servers[index].pinning(certificate: digest)
+        ConfigManager.shared.saveServers(updated)
+        NotificationCenter.default.post(name: .configChanged, object: nil)
+        // An open Settings window must reload, or its next save would drop the pinned certificate
+        NotificationCenter.default.post(name: .configReloaded, object: nil)
+
+        addLog(server.name, "First connection: trusting the gateway certificate (sha256 \(digest)) and retrying")
+        conn.retryServer = updated[index]
+        conn.failed = true
+        terminate(conn: conn)
+    }
+
     static func failureReason(in line: String, server: VPNServer) -> String? {
         let lower = line.lowercased()
         if lower.contains("could not resolve host") || lower.contains("cannot resolve host") {
@@ -348,7 +391,9 @@ class VPNManager: ObservableObject {
         } else if lower.contains("permission denied") && !lower.contains("sudo") {
             return "Authentication failed - check username/password"
         } else if lower.contains("certificate") && lower.contains("error") {
-            return "Certificate error - try leaving certificate field empty"
+            return server.trustedCert?.isEmpty == false
+                ? "Certificate error - the gateway certificate no longer matches the pinned one. Clear the certificate in the server settings to trust the new one"
+                : "Certificate error - the gateway certificate could not be verified"
         } else if lower.contains("gateway") && lower.contains("error") {
             return "Gateway error: \(line)"
         }
@@ -547,6 +592,17 @@ class VPNManager: ObservableObject {
         // unless the user disconnected or retrying cannot help
         let dropped = previousState.isConnected || (previousState == .connecting && inReconnectCycle)
         let reconnect = dropped && !conn.fatal && autoReconnectEnabled(for: server.id)
+
+        if let pinned = conn.retryServer {
+            finish(conn, keepStatus: true)
+            if let password = KeychainHelper.read(for: pinned.id), !password.isEmpty {
+                startAttempt(server: pinned, password: password)
+            } else {
+                reportError(server: pinned, reason: "No saved password")
+                removeTunnel(pinned.id)
+            }
+            return
+        }
 
         finish(conn, keepStatus: reconnect)
 

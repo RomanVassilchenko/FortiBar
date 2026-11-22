@@ -114,7 +114,7 @@ Only one tunnel should own the default routes and DNS. For the others, open the 
 - **Connect at launch** — connect automatically when FortiBar starts
 - **Reconnect automatically** — when the tunnel drops (network change, sleep, gateway timeout), reconnect after 2, 5, 10, 20, 30, then every 60 seconds until you disconnect. While offline it waits for the network and retries as soon as it is back. Wrong credentials or certificate stop the retries.
 
-Quitting FortiBar (menu, ⌘Q, `brew uninstall`, logout or `SIGTERM`) disconnects every tunnel first, so openfortivpn restores routes and DNS.
+Quitting FortiBar (menu, ⌘Q, logout or `SIGTERM`) disconnects every tunnel first, so openfortivpn restores routes and DNS.
 
 ### Command line
 
@@ -220,5 +220,5 @@ The demo GIF at the top of this README is generated with `python3 scripts/make_p
 
 ## Attribution
 
-FortiBar is a fork of [OpenFortiMac](https://github.com/rempairamore/OpenFortiMac) by [@rempairamore](https://github.com/rempairamore), forked from the project at the commit "Start FortiBar: standalone project forked from OpenFortiMac". The original work is copyright its author and licensed under the GNU General Public License v3.0; this project is distributed under the same license (see [LICENSE](LICENSE)), and all original copyright and license notices are retained. FortiBar wraps [openfortivpn](https://github.com/adrienverge/openfortivpn) by Adrien Vergé. FortiBar is not affiliated with Fortinet.
+FortiBar is a fork of [OpenFortiMac](https://github.com/rempairamore/OpenFortiMac) by [@rempairamore](https://github.com/rempairamore). The original work is copyright its author and licensed under the GNU General Public License v3.0; this project is distributed under the same license (see [LICENSE](LICENSE)), and all original copyright and license notices are retained. FortiBar wraps [openfortivpn](https://github.com/adrienverge/openfortivpn) by Adrien Vergé. FortiBar is not affiliated with Fortinet.
 
