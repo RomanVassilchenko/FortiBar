@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Liquid Glass (macOS 26) with a material fallback for macOS 15.
+// Liquid Glass (macOS 26) with a material fallback before.
 // Glass is kept for the control layer (buttons, the status puck), never stacked on glass.
 
 extension View {

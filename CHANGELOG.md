@@ -14,7 +14,7 @@
 - Optional monochrome menu bar icon (Settings → General → Menu bar icon): a template shield that shows the number of connected tunnels; the classic lock stays the default
 
 ### Changed
-- Menu bar panel restyled with Liquid Glass on macOS 26 (glass status puck, buttons and footer; a material fallback on macOS 15). The settings window follows the system style
+- Menu bar panel restyled with Liquid Glass on macOS 26 (glass status puck, buttons and footer; a material fallback before macOS 26). The settings window follows the system style
 - The project is now **FortiBar**, a fork of OpenFortiMac by rempairamore (GPL-3.0). New bundle identifier `com.romanvassilchenko.FortiBar`, new CLI name `fortibar`, new sudo rule `/etc/sudoers.d/fortibar`, new Keychain service, config in `~/Library/Application Support/FortiBar`
 - First launch migrates data from OpenFortiMac: servers and settings, logs, and Keychain passwords (copied, then deleted from the old service; macOS may ask for access once: choose **Always Allow**). **Settings → Permission → Update…** replaces the old sudo rule with the new one. Launch at login must be turned on again in FortiBar
 - Prebuilt releases, the Homebrew tap and the build provenance of the original project do not apply to FortiBar; the release workflow is kept disabled until signing secrets exist

@@ -18,11 +18,15 @@ enum LegacyMigration {
     /// Sudoers rule of earlier versions. SudoersManager replaces it with its own rule.
     static let legacySudoersRulePath = "/etc/sudoers.d/openfortimac"
 
+    /// Unit tests are hosted in the app and must never touch the real home folder or Keychain.
+    private static let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+
     // MARK: - Files
 
     /// Moves ~/Library/Application Support/OpenFortiMac (config.json) and the log files
     /// to their FortiBar locations. No Keychain access, so the CLI can run it too.
     static func migrateFiles() {
+        guard !isRunningTests else { return }
         migrateConfigFolder()
         migrateLogs()
     }
@@ -87,7 +91,7 @@ enum LegacyMigration {
     /// Blocking: call it from the app only, never from the CLI.
     static func migrateKeychain() {
         let fm = FileManager.default
-        guard !fm.fileExists(atPath: keychainMarker.path) else { return }
+        guard !isRunningTests, !fm.fileExists(atPath: keychainMarker.path) else { return }
 
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,

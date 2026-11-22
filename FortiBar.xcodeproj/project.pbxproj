@@ -8,7 +8,18 @@
 
 /* Begin PBXFileReference section */
 		ACCE1C5C2F391027005645A5 /* FortiBar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FortiBar.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		ACCE1C712F391028005645A5 /* FortiBarTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FortiBarTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXContainerItemProxy section */
+		ACCE1C762F391028005645A5 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = ACCE1C542F391027005645A5 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = ACCE1C5B2F391027005645A5;
+			remoteInfo = FortiBar;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		ACCE1C5E2F391027005645A5 /* FortiBar */ = {
@@ -16,10 +27,22 @@
 			path = FortiBar;
 			sourceTree = "<group>";
 		};
+		ACCE1C722F391028005645A5 /* FortiBarTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = FortiBarTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		ACCE1C592F391027005645A5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ACCE1C742F391028005645A5 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -33,6 +56,7 @@
 			isa = PBXGroup;
 			children = (
 				ACCE1C5E2F391027005645A5 /* FortiBar */,
+				ACCE1C722F391028005645A5 /* FortiBarTests */,
 				ACCE1C5D2F391027005645A5 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +65,7 @@
 			isa = PBXGroup;
 			children = (
 				ACCE1C5C2F391027005645A5 /* FortiBar.app */,
+				ACCE1C712F391028005645A5 /* FortiBarTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -70,6 +95,29 @@
 			productReference = ACCE1C5C2F391027005645A5 /* FortiBar.app */;
 			productType = "com.apple.product-type.application";
 		};
+		ACCE1C702F391028005645A5 /* FortiBarTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = ACCE1C782F391028005645A5 /* Build configuration list for PBXNativeTarget "FortiBarTests" */;
+			buildPhases = (
+				ACCE1C732F391028005645A5 /* Sources */,
+				ACCE1C742F391028005645A5 /* Frameworks */,
+				ACCE1C752F391028005645A5 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				ACCE1C772F391028005645A5 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				ACCE1C722F391028005645A5 /* FortiBarTests */,
+			);
+			name = FortiBarTests;
+			packageProductDependencies = (
+			);
+			productName = FortiBarTests;
+			productReference = ACCE1C712F391028005645A5 /* FortiBarTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -83,6 +131,10 @@
 					ACCE1C5B2F391027005645A5 = {
 						CreatedOnToolsVersion = 26.2;
 						LastSwiftMigration = 2620;
+					};
+					ACCE1C702F391028005645A5 = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = ACCE1C5B2F391027005645A5;
 					};
 				};
 			};
@@ -101,12 +153,20 @@
 			projectRoot = "";
 			targets = (
 				ACCE1C5B2F391027005645A5 /* FortiBar */,
+				ACCE1C702F391028005645A5 /* FortiBarTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		ACCE1C5A2F391027005645A5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ACCE1C752F391028005645A5 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -123,7 +183,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		ACCE1C732F391028005645A5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		ACCE1C772F391028005645A5 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = ACCE1C5B2F391027005645A5 /* FortiBar */;
+			targetProxy = ACCE1C762F391028005645A5 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		ACCE1C652F391028005645A5 /* Debug */ = {
@@ -323,6 +398,47 @@
 			};
 			name = Release;
 		};
+		ACCE1C792F391028005645A5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.romanvassilchenko.FortiBarTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FortiBar.app/Contents/MacOS/FortiBar";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		ACCE1C7A2F391028005645A5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.romanvassilchenko.FortiBarTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FortiBar.app/Contents/MacOS/FortiBar";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -340,6 +456,15 @@
 			buildConfigurations = (
 				ACCE1C682F391028005645A5 /* Debug */,
 				ACCE1C692F391028005645A5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		ACCE1C782F391028005645A5 /* Build configuration list for PBXNativeTarget "FortiBarTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ACCE1C792F391028005645A5 /* Debug */,
+				ACCE1C7A2F391028005645A5 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

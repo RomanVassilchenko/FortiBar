@@ -1,5 +1,5 @@
 # FortiBar
-![macOS 15+](https://img.shields.io/badge/macOS-15%2B-blue)
+![macOS 13+](https://img.shields.io/badge/macOS-13%2B-blue)
 ![Swift](https://img.shields.io/badge/Swift-5-orange)
 ![License: GPL v3](https://img.shields.io/badge/license-GPLv3-green)
 
@@ -12,7 +12,7 @@
 
 ---
 
-A native macOS menu bar app (Liquid Glass on macOS 26, a regular material on macOS 15) for managing [openfortivpn](https://github.com/adrienverge/openfortivpn) connections. Built with Swift and SwiftUI, it sits in your menu bar and lets you connect/disconnect with a single click, with several simultaneous tunnels, auto-reconnect and a command line tool.
+A native macOS menu bar app (Liquid Glass on macOS 26, a regular material before) for managing [openfortivpn](https://github.com/adrienverge/openfortivpn) connections. Built with Swift and SwiftUI, it sits in your menu bar and lets you connect/disconnect with a single click, with several simultaneous tunnels, auto-reconnect and a command line tool.
 
 Passwords are stored in the macOS Keychain.
 

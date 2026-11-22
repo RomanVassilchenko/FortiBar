@@ -15,6 +15,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
+        // Unit tests are hosted in the app: no migration, tunnels or menu bar item then
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil { return }
+
         // Passwords saved under the previous app name; before anything reads the Keychain
         LegacyMigration.migrateKeychain()
 
