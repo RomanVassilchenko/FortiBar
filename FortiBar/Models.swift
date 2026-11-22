@@ -87,7 +87,7 @@ struct VPNServer: Codable, Identifiable, Hashable {
     /// Static routes (CIDR) installed through this tunnel's ppp interface
     /// when it comes up, and removed when it goes down.
     let staticRoutes: [String]
-    /// Connect automatically when OpenFortiMac starts.
+    /// Connect automatically when FortiBar starts.
     let autoConnect: Bool
     /// Reconnect when the tunnel drops (network change, gateway timeout, sleep)
     /// until the user disconnects.
@@ -174,6 +174,15 @@ struct VPNServer: Codable, Identifiable, Hashable {
         if autoReconnect {
             try container.encode(true, forKey: .autoReconnect)
         }
+    }
+
+    /// The same profile with the gateway certificate pinned (SHA-256 digest as openfortivpn prints it).
+    func pinning(certificate digest: String) -> VPNServer {
+        VPNServer(
+            name: name, host: host, port: port, username: username, password: password,
+            trustedCert: digest, icon: icon, id: id, noRoutesDNS: noRoutesDNS,
+            staticRoutes: staticRoutes, autoConnect: autoConnect, autoReconnect: autoReconnect
+        )
     }
 
     /// Routes that passed the CIDR check: only these are ever handed to /sbin/route.

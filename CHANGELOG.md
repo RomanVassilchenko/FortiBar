@@ -1,18 +1,23 @@
 # Changelog
 
-## Unreleased
+## v1.4.0
 
 ### Added
+- The gateway certificate is trusted on the first connection: when it cannot be verified, its digest is pinned in the server profile and the connection retried. A pinned certificate that changes is a certificate error. (Before, the `--trusted-cert=any` fallback made such servers fail until the digest was pasted by hand)
 - Multiple simultaneous connections (Settings → General, off by default): one openfortivpn process, status card, log and Disconnect per server
 - Per-server options: "Don't change routes or DNS" (`--no-routes --no-dns`), static routes through the tunnel's ppp interface, connect at launch
 - Per-server auto-reconnect: retries with backoff when a tunnel drops, waits for the network while offline, stops on authentication or certificate errors
 - Sudo rule can also allow `/sbin/route` for ppp interfaces, only when a server uses static routes
-- `openfortimac` command line tool (the app executable): list, status, connect, disconnect, logs, add, edit, remove, show, settings, permission
-- Log file at `~/Library/Logs/OpenFortiMac/openfortimac.log`
+- `fortibar` command line tool (the app executable): list, status, connect, disconnect, logs, add, edit, remove, show, settings, permission
+- Log file at `~/Library/Logs/FortiBar/fortibar.log`
 - Right-click menu: connect any idle server
 - Optional monochrome menu bar icon (Settings → General → Menu bar icon): a template shield that shows the number of connected tunnels; the classic lock stays the default
 
 ### Changed
+- Menu bar panel restyled with Liquid Glass on macOS 26 (glass status puck, buttons and footer; a material fallback before macOS 26). The settings window follows the system style
+- The project is now **FortiBar**, a fork of OpenFortiMac by rempairamore (GPL-3.0). New bundle identifier `com.romanvassilchenko.FortiBar`, new CLI name `fortibar`, new sudo rule `/etc/sudoers.d/fortibar`, new Keychain service, config in `~/Library/Application Support/FortiBar`
+- First launch migrates data from OpenFortiMac: servers and settings, logs, and Keychain passwords (copied, then deleted from the old service; macOS may ask for access once: choose **Always Allow**). **Settings → Permission → Update…** replaces the old sudo rule with the new one. Launch at login must be turned on again in FortiBar
+- Prebuilt releases, the Homebrew tap and the build provenance of the original project do not apply to FortiBar; the release workflow is kept disabled until signing secrets exist
 - Quitting disconnects all tunnels first, whatever the way of quitting (menu, `brew uninstall`, logout, SIGTERM)
 - The temporary openfortivpn config (with the password) is deleted as soon as the tunnel is up
 

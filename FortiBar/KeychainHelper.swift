@@ -3,7 +3,7 @@ import Security
 
 struct KeychainHelper {
     
-    private static let service = "com.openfortimac.vpn"
+    private static let service = "com.romanvassilchenko.FortiBar.vpn"
     
     /// Save or update a password in the Keychain
     static func save(password: String, for serverID: String) -> Bool {

@@ -1,10 +1,10 @@
 import Foundation
 import AppKit
 
-/// `openfortimac` command line interface. The app executable doubles as the CLI:
+/// `fortibar` command line interface. The app executable doubles as the CLI:
 /// link it into PATH, e.g.
 ///
-///     ln -s /Applications/OpenFortiMac.app/Contents/MacOS/OpenFortiMac /opt/homebrew/bin/openfortimac
+///     ln -s /Applications/FortiBar.app/Contents/MacOS/FortiBar /opt/homebrew/bin/fortibar
 ///
 /// Commands are executed by the running app (launched in the background when needed),
 /// which owns the tunnels, the Keychain access and the sudo rule.
@@ -15,7 +15,7 @@ enum CommandLineTool {
         "help", "--help", "-h", "version", "--version"
     ]
 
-    /// True when the process was started as `openfortimac <command>` rather than as the app.
+    /// True when the process was started as `fortibar <command>` rather than as the app.
     /// Launch Services and Xcode only pass "-…" arguments, so any other word is a CLI call
     /// (unknown ones print the usage instead of starting a second app instance).
     static func handles(_ arguments: [String]) -> Bool {
@@ -67,7 +67,7 @@ enum CommandLineTool {
             let executable = URL(fileURLWithPath: String(cString: buffer)).resolvingSymlinksInPath()
             let bundle = Bundle(url: executable.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()) ?? .main
             let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
-            print("openfortimac \(version)")
+            print("fortibar \(version)")
             return 0
         case "help", "--help", "-h":
             printUsage()
@@ -106,7 +106,7 @@ enum CommandLineTool {
         }
 
         if servers.isEmpty {
-            print("No servers configured. Add one in OpenFortiMac › Settings › Servers.")
+            print("No servers configured. Add one in FortiBar › Settings › Servers.")
             return 0
         }
 
@@ -127,7 +127,7 @@ enum CommandLineTool {
             print(line.trimmingCharacters(in: .whitespaces))
         }
         if state == nil {
-            print("\n(OpenFortiMac is not running)")
+            print("\n(FortiBar is not running)")
         }
         return 0
     }
@@ -135,7 +135,7 @@ enum CommandLineTool {
     static func status(json: Bool) -> Int32 {
         guard let state = runningState() else {
             if json { return printJSON(["running": false, "tunnels": []] as [String: Any]) }
-            print("OpenFortiMac is not running")
+            print("FortiBar is not running")
             return 3
         }
 
@@ -168,7 +168,7 @@ enum CommandLineTool {
     static func connect(_ query: String, wait: Bool, timeout: TimeInterval) -> Int32 {
         guard let server = resolve(query) else { return 2 }
         guard let state = ensureRunning() else {
-            printError("could not start OpenFortiMac")
+            printError("could not start FortiBar")
             return 3
         }
         if let tunnel = state.tunnels.first(where: { $0.id == server.id }), tunnel.state == "connected" {
@@ -185,7 +185,7 @@ enum CommandLineTool {
         while Date() < deadline {
             Thread.sleep(forTimeInterval: 0.3)
             guard let state = runningState() else {
-                printError("OpenFortiMac quit")
+                printError("FortiBar quit")
                 return 3
             }
             if let tunnel = state.tunnels.first(where: { $0.id == server.id }) {
@@ -200,7 +200,7 @@ enum CommandLineTool {
                 printError("\(server.name): \(error.message)")
                 return 1
             } else if seen || Date().timeIntervalSince(requested) > 5 {
-                printError("\(server.name) did not connect, see: openfortimac logs")
+                printError("\(server.name) did not connect, see: fortibar logs")
                 return 1
             }
         }
@@ -210,7 +210,7 @@ enum CommandLineTool {
 
     static func disconnect(_ query: String?, wait: Bool) -> Int32 {
         guard let state = runningState() else {
-            print("OpenFortiMac is not running: nothing to disconnect")
+            print("FortiBar is not running: nothing to disconnect")
             return 0
         }
 
@@ -351,7 +351,7 @@ enum CommandLineTool {
     }
 
     static func printError(_ message: String) {
-        FileHandle.standardError.write(Data("openfortimac: \(message)\n".utf8))
+        FileHandle.standardError.write(Data("fortibar: \(message)\n".utf8))
     }
 
     @discardableResult
@@ -363,7 +363,7 @@ enum CommandLineTool {
 
     static func printUsage() {
         print("""
-        usage: openfortimac <command> [options]
+        usage: fortibar <command> [options]
 
           list [--json]                       servers and their state
           status [--json]                     active tunnels (time, IP, interface, routes)
@@ -383,18 +383,18 @@ enum CommandLineTool {
 
         Server options:
           --host <host>  --port <port>  --user <user>  --icon <sf symbol>
-          --cert <sha256> | --no-cert         pin the gateway certificate (default: any)
+          --cert <sha256> | --no-cert         pin the gateway certificate (default: trusted on first connect)
           --password                          prompt for the password (saved in the Keychain)
           --password-stdin                    read the password from stdin
           --no-routes-dns | --routes-dns      pass --no-routes --no-dns (secondary tunnel)
           --route <cidr>                      static route via the tunnel (repeatable; edit: replaces)
           --add-route <cidr> --remove-route <cidr> --clear-routes
-          --auto-connect | --no-auto-connect  connect when OpenFortiMac starts
+          --auto-connect | --no-auto-connect  connect when FortiBar starts
           --auto-reconnect | --no-auto-reconnect
                                               reconnect when the tunnel drops, until disconnected
 
         <server> is a name, a unique name prefix (case-insensitive) or an id.
-        Commands run through the OpenFortiMac app, which is started in the background if needed.
+        Commands run through the FortiBar app, which is started in the background if needed.
         Exit codes: 0 ok, 1 failed, 2 usage / unknown server, 3 app not running.
         """)
     }

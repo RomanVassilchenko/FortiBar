@@ -2,8 +2,26 @@ import SwiftUI
 import Combine
 import ServiceManagement
 
-enum SettingsTab {
+enum SettingsTab: CaseIterable {
     case servers, permission, general, log
+
+    var title: String {
+        switch self {
+        case .servers: return "Servers"
+        case .permission: return "Permission"
+        case .general: return "General"
+        case .log: return "Log"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .servers: return "server.rack"
+        case .permission: return "lock.shield"
+        case .general: return "gearshape"
+        case .log: return "doc.text"
+        }
+    }
 }
 
 /// Asks the settings window to open the server editor, e.g. from the menu bar panel.
@@ -28,32 +46,20 @@ struct SettingsView: View {
     }
     
     var body: some View {
-        TabView(selection: $selectedTab) {
-            serversTab
-                .tabItem {
-                    Label("Servers", systemImage: "server.rack")
+        VStack(spacing: 0) {
+            tabBar
+            Divider()
+            Group {
+                switch selectedTab {
+                case .servers: serversTab
+                case .permission: permissionTab
+                case .general: generalTab
+                case .log: logTab
                 }
-                .tag(SettingsTab.servers)
-            
-            permissionTab
-                .tabItem {
-                    Label("Permission", systemImage: "lock.shield")
-                }
-                .tag(SettingsTab.permission)
-            
-            generalTab
-                .tabItem {
-                    Label("General", systemImage: "gearshape")
-                }
-                .tag(SettingsTab.general)
-            
-            logTab
-                .tabItem {
-                    Label("Log", systemImage: "doc.text")
-                }
-                .tag(SettingsTab.log)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 540, height: 460)
+        .frame(width: 540, height: 660)
         .onReceive(NotificationCenter.default.publisher(for: .showSettingsTab)) { notification in
             if let tab = notification.object as? SettingsTab {
                 selectedTab = tab
@@ -95,6 +101,28 @@ struct SettingsView: View {
         }
     }
     
+    /// Toolbar-style tabs, like the settings windows of system apps.
+    private var tabBar: some View {
+        HStack(spacing: 4) {
+            ForEach(SettingsTab.allCases, id: \.self) { tab in
+                Button { selectedTab = tab } label: {
+                    VStack(spacing: 3) {
+                        Image(systemName: tab.symbol).font(.system(size: 18))
+                        Text(tab.title).font(.caption)
+                    }
+                    .frame(width: 80, height: 48)
+                    .foregroundStyle(selectedTab == tab ? Color.accentColor : .secondary)
+                    .background(selectedTab == tab ? Color.primary.opacity(0.1) : .clear,
+                                in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+    }
+
     private func openEditor(_ request: ServerEditorRequest) {
         selectedTab = .servers
         switch request {
@@ -123,6 +151,8 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                     Button("Add server") { showingAddServer = true }
+                        .glassButtonStyle(prominent: true)
+                        .controlSize(.large)
                         .padding(.top, 4)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -219,11 +249,11 @@ struct SettingsView: View {
             }
             
             Section("How it works") {
-                Text("openfortivpn needs root to create the VPN tunnel. OpenFortiMac adds a sudo rule so it can start without asking for your password every time.")
+                Text("openfortivpn needs root to create the VPN tunnel. FortiBar adds a sudo rule so it can start without asking for your password every time.")
                     .font(.callout)
                 Text("Servers with static routes also need /sbin/route, limited to routes through ppp interfaces.")
                     .font(.callout)
-                Text("Any app running as your user gains the same ability. Remove the rule if you stop using OpenFortiMac.")
+                Text("Any app running as your user gains the same ability. Remove the rule if you stop using FortiBar.")
                     .font(.callout)
                     .foregroundColor(.secondary)
             }
@@ -247,6 +277,14 @@ struct SettingsView: View {
                     .keyboardShortcut(.defaultAction)
                     .disabled(busy)
             )
+        case .legacyRule:
+            return AnyView(HStack {
+                Button("Remove") { viewModel.removeSudoers() }
+                    .disabled(busy)
+                Button("Update…") { viewModel.setUpSudoers() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(busy)
+            })
         case .outdated:
             return AnyView(HStack {
                 Button("Remove") { viewModel.removeSudoers() }
@@ -272,7 +310,7 @@ struct SettingsView: View {
     private var sudoersIcon: String {
         switch viewModel.sudoersStatus {
         case .managed, .external: return "checkmark.shield.fill"
-        case .outdated, .missing, .routesMissing: return "exclamationmark.shield.fill"
+        case .legacyRule, .outdated, .missing, .routesMissing: return "exclamationmark.shield.fill"
         case .binaryNotFound: return "xmark.shield.fill"
         case .none: return "shield"
         }
@@ -281,7 +319,7 @@ struct SettingsView: View {
     private var sudoersTint: Color {
         switch viewModel.sudoersStatus {
         case .managed, .external: return .green
-        case .outdated, .missing, .routesMissing: return .orange
+        case .legacyRule, .outdated, .missing, .routesMissing: return .orange
         case .binaryNotFound: return .red
         case .none: return .secondary
         }
@@ -292,6 +330,7 @@ struct SettingsView: View {
         case .none: return "Checking…"
         case .managed: return "openfortivpn can start without a password"
         case .external: return "Allowed by a rule you added manually"
+        case .legacyRule: return "The rule uses the old OpenFortiMac name"
         case .outdated: return "The rule points to a different openfortivpn"
         case .missing: return "Not set up: connections will fail"
         case .routesMissing: return "Static routes need an updated rule"
@@ -303,8 +342,10 @@ struct SettingsView: View {
         switch viewModel.sudoersStatus {
         case .managed, .outdated:
             return SudoersManager.rulePath
+        case .legacyRule:
+            return "\(LegacyMigration.legacySudoersRulePath) → \(SudoersManager.rulePath)"
         case .external:
-            return "Not managed by OpenFortiMac (e.g. /etc/sudoers.d/openfortivpn)"
+            return "Not managed by FortiBar (e.g. /etc/sudoers.d/openfortivpn)"
         case .routesMissing:
             return "A server adds static routes: allow /sbin/route for ppp interfaces"
         case .missing:
@@ -322,8 +363,12 @@ struct SettingsView: View {
         Form {
             Section("openfortivpn Binary") {
                 HStack {
-                    TextField("Path:", text: $viewModel.openfortivpnPath)
-                        .font(.system(.body, design: .monospaced))
+                    LabeledContent("Path:") {
+                        TextField("", text: $viewModel.openfortivpnPath)
+                            .labelsHidden()
+                            .font(.system(.body, design: .monospaced))
+                            .multilineTextAlignment(.trailing)
+                    }
                     
                     Button("Browse...") {
                         let panel = NSOpenPanel()
@@ -563,9 +608,12 @@ struct ServerEditView: View {
                     .frame(width: 280)
                 SecureField("Password:", text: $password)
                     .frame(width: 280)
-                TextField("Certificate (optional):", text: $trustedCert)
-                    .frame(width: 280)
-                    .font(.system(size: 11, design: .monospaced))
+                LabeledContent("Certificate:") {
+                    TextField("", text: $trustedCert, prompt: Text("Trusted on first connect"))
+                        .labelsHidden()
+                        .font(.system(size: 11, design: .monospaced))
+                        .frame(width: 280)
+                }
                 LabeledContent("Icon:") {
                     HStack(spacing: 4) {
                         ForEach(VPNServer.iconChoices, id: \.self) { choice in
@@ -594,10 +642,14 @@ struct ServerEditView: View {
                         .help("Reconnects when the tunnel drops, e.g. after a network change, until you disconnect")
                     Toggle("Don't change routes or DNS", isOn: $noRoutesDNS)
                         .help("Runs openfortivpn with --no-routes --no-dns")
-                    TextField("Static routes:", text: $staticRoutes, prompt: Text("10.20.30.0/24"), axis: .vertical)
-                        .font(.system(size: 11, design: .monospaced))
-                        .lineLimit(2...4)
-                        .help("One CIDR per line, routed through this tunnel's ppp interface while it is up")
+                    LabeledContent("Static routes:") {
+                        TextField("", text: $staticRoutes, prompt: Text("10.20.30.0/24"), axis: .vertical)
+                            .labelsHidden()
+                            .font(.system(size: 11, design: .monospaced))
+                            .lineLimit(2...4)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    .help("One CIDR per line, routed through this tunnel's ppp interface while it is up")
                 } header: {
                     Text("Advanced")
                 } footer: {
@@ -636,7 +688,7 @@ struct ServerEditView: View {
             }
             .padding()
         }
-        .frame(width: 440, height: 600)
+        .frame(width: 440, height: 680)
         .onAppear {
             if let server = server {
                 name = server.name
