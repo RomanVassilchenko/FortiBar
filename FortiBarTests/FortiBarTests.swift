@@ -45,6 +45,12 @@ struct FailureParsingTests {
         #expect(reason != nil && VPNManager.isFatal(reason!))
     }
 
+    @Test func authenticationHintMentioningCertificatesIsNotACertificateError() {
+        // openfortivpn's own wording: "... check the password, client certificate, etc."
+        let line = "ERROR:  Could not authenticate to gateway. Please check the password, client certificate, etc."
+        #expect(VPNManager.failureReason(in: line, server: server)?.hasPrefix("Authentication failed") == true)
+    }
+
     @Test func parsesTunnelAddressAndInterface() {
         #expect(VPNManager.assignedAddress(in: "INFO: Got addresses: [10.0.0.5], ns [1.1.1.1]") == "10.0.0.5")
         #expect(VPNManager.interfaceName(in: "Using interface ppp3") == "ppp3")

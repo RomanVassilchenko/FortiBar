@@ -386,7 +386,7 @@ class VPNManager: ObservableObject {
             return "Connection timed out"
         } else if lower.contains("connection refused") {
             return "Connection refused by server"
-        } else if lower.contains("authentication failed") || lower.contains("login failed") {
+        } else if lower.contains("authentication failed") || lower.contains("login failed") || lower.contains("could not authenticate") {
             return "Authentication failed - check username/password"
         } else if lower.contains("permission denied") && !lower.contains("sudo") {
             return "Authentication failed - check username/password"

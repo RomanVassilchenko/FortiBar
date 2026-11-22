@@ -61,7 +61,7 @@ struct MenuPanelView: View {
         case .missing:
             return banner("Administrator permission not set up", "openfortivpn needs it to start the tunnel.", "Set up")
         case .legacyRule:
-            return banner("Permission rule needs a one-time update", "FortiBar renamed its sudo rule.", "Update")
+            return banner("Update the permission rule", "One-time step: the sudo rule got a new name.", "Update")
         case .routesMissing:
             return banner("Static routes need permission", "Update the rule so routes can be added.", "Update")
         case .outdated:
