@@ -9,15 +9,9 @@
 >
 > See [Attribution](#attribution) and [Upgrading from OpenFortiMac](#upgrading-from-openfortimac).
 
-
----
-
-A native macOS menu bar app (Liquid Glass on macOS 26, a regular material before) for managing [openfortivpn](https://github.com/adrienverge/openfortivpn) connections. Built with Swift and SwiftUI, it sits in your menu bar and lets you connect/disconnect with a single click, with several simultaneous tunnels, auto-reconnect and a command line tool.
-
-Passwords are stored in the macOS Keychain.
+Connect with one click from the menu bar, run several tunnels side by side, reconnect automatically when one drops. Passwords are stored in the macOS Keychain. Website: [romanvassilchenko.github.io/FortiBar](https://romanvassilchenko.github.io/FortiBar/).
 
 <img src="docs/assets/fortibar-panel-demo.gif" width="356" alt="Click the FortiBar menu bar icon, then Connect on a server: the panel shows Connecting and then Connected with the tunnel IP">
-
 
 <p>
 <img src="docs/assets/screenshot-servers.png" width="320" alt="Settings, Servers tab">
@@ -30,39 +24,34 @@ Passwords are stored in the macOS Keychain.
 ### Download
 
 1. Install openfortivpn: `brew install openfortivpn`
-2. Download the latest `.dmg` from [Releases](../../releases), open it and drag **FortiBar** to your Applications folder.
+2. Download the latest `.dmg` from [Releases](https://github.com/RomanVassilchenko/FortiBar/releases/latest), open it and drag **FortiBar** to Applications.
 
-### Build yourself
+### Build it yourself
 
-Xcode 26 or later is required:
+Requires Xcode 26 or later.
 
 ```bash
 brew install openfortivpn
 git clone https://github.com/RomanVassilchenko/FortiBar.git
 cd FortiBar
-chmod +x build_dmg.sh
-./build_dmg.sh
+./build_dmg.sh        # produces FortiBar_vX.Y.Z.dmg
 ```
 
-This produces `FortiBar_vX.Y.Z.dmg`. Run the unit tests with `xcodebuild test -project FortiBar.xcodeproj -scheme FortiBar -destination 'platform=macOS'`.
-
-Without the `FortiBar Self-Signed` certificate in your keychain the app is signed ad hoc, and macOS asks for Keychain access again after every rebuild. Create a self-signed code signing certificate with that name (Keychain Access → Certificate Assistant) to keep the app's identity stable across updates.
+Without a code signing certificate named `FortiBar Self-Signed` in your keychain the app is signed ad hoc, and macOS asks for Keychain access again after every rebuild. Create one in Keychain Access → Certificate Assistant to keep the app's identity stable.
 
 ### First launch
 
-FortiBar is not notarized by Apple, so macOS blocks it the first time. Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to the FortiBar message. This is needed only once.
+Releases are signed with a self-signed certificate and are not notarized by Apple, so macOS blocks the first launch. Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to the FortiBar message. This is needed only once.
 
 ### Allow openfortivpn to run as root
 
-openfortivpn needs root privileges to create the VPN tunnel. On first launch FortiBar opens **Settings → Permission**: click **Set Up…** and enter your administrator password once.
-
-The app installs this rule in `/etc/sudoers.d/fortibar` (validated with `visudo`, owned by root, read-only):
+openfortivpn needs root to create the tunnel. On first launch FortiBar opens **Settings → Permission**: click **Set Up…** and enter your administrator password once. The app writes this rule to `/etc/sudoers.d/fortibar` (validated with `visudo`, owned by root, read-only):
 
 ```
 YOUR_USERNAME ALL = (root) NOPASSWD: /opt/homebrew/bin/openfortivpn
 ```
 
-Click **Remove** in the same place to delete it.
+If a server uses static routes, the rule also allows `/sbin/route`, limited to network routes through ppp interfaces. **Remove** in the same place deletes the rule.
 
 > **Security note:** with this rule any process running as your user can start openfortivpn as root without a password, and `/opt/homebrew` is writable by your user. This is the usual trade-off for openfortivpn GUIs; remove the rule if you stop using the app.
 
@@ -73,59 +62,39 @@ Click **Remove** in the same place to delete it.
 sudo visudo -f /etc/sudoers.d/fortibar
 ```
 
-Add this line (replace `YOUR_USERNAME` with your macOS username):
+Add this line, with your macOS username and the output of `which openfortivpn` (`/opt/homebrew/bin/openfortivpn` on Apple Silicon, `/usr/local/bin/openfortivpn` on Intel):
 
 ```
 YOUR_USERNAME ALL = (root) NOPASSWD: /opt/homebrew/bin/openfortivpn
 ```
 
-The path is `/opt/homebrew/bin/openfortivpn` on Apple Silicon and `/usr/local/bin/openfortivpn` on Intel Macs. Run `which openfortivpn` to check.
+For static routes add:
+
+```
+YOUR_USERNAME ALL = (root) NOPASSWD: /sbin/route -n add -net * -interface ppp*, /sbin/route -n change -net * -interface ppp*, /sbin/route -n delete -net * -interface ppp*
+```
 </details>
-
-### Configure
-
-A lock icon appears in the menu bar. Click it → **Settings** → **Servers** tab → add your VPN servers.
 
 ## Usage
 
-Click the menu bar icon to open the panel:
+Click the shield in the menu bar → **Settings** (⌘,) → **Servers** → add your VPN servers.
 
-- **Status card** — the current server, connection time and tunnel IP, with **Disconnect** (⌘D)
-- **Servers** — hover a server and click **Connect**; a server without a saved password opens its editor
-- **Footer** — add a server, Settings (⌘,), Log, Quit (⌘Q)
+The menu bar icon follows the menu bar appearance like system icons: an outlined shield when disconnected, a checkmark when one tunnel is up, the number of tunnels when several are.
 
-If the administrator permission is missing, a banner in the panel links to **Settings → Permission**. Right-click the menu bar icon for a quick menu with Disconnect, Settings and Quit.
-
-Each server can have its own icon, chosen in the server editor.
-
-| Icon | Status |
-|------|--------|
-| 🔓 | Disconnected |
-| 🔄 | Connecting / Disconnecting |
-| 🔒 (green) | Connected |
-
-**Settings → General → Menu bar icon → Monochrome** switches to a template shield that follows the menu bar appearance and shows how many tunnels are up:
-
-| Icon | Status |
-|------|--------|
-| Outlined shield | Disconnected |
-| Half-filled shield | Connecting |
-| Shield with checkmark | One tunnel connected |
-| Filled shield with a number | That many tunnels connected |
-| Small dot next to it | Another tunnel is connecting |
+Click it to open the panel: a status card per tunnel (connection time, tunnel IP, **Disconnect** ⌘D), the server list (hover a server and click **Connect**; a server without a saved password opens its editor) and a footer with Add server, Settings, Log and Quit. Right-click the icon for a quick menu. FortiBar sends a notification on connect, disconnect and errors.
 
 ### Multiple connections
 
-Turn on **Settings → General → Allow multiple connections at once** to run several tunnels side by side, each with its own status card, log lines and Disconnect button. When it is off (the default), connecting to a server drops the current one.
+Turn on **Settings → General → Allow multiple connections at once** to run several tunnels side by side. When it is off (the default), connecting to a server drops the current one.
 
-Only one tunnel should own the default routes and DNS. For the others, open the server editor → **Advanced**:
+Only one tunnel should own the default route and DNS. In the server editor → **Advanced**:
 
-- **Don't change routes or DNS** — runs openfortivpn with `--no-routes --no-dns`
-- **Static routes** — CIDRs (one per line) routed through this tunnel's own ppp interface while it is up; the interface is detected after connecting, since ppp numbering is dynamic. Needs the sudo rule to allow `/sbin/route` for ppp interfaces: the panel shows an **Update** banner when it is missing.
-- **Connect at launch** — connect automatically when FortiBar starts
-- **Reconnect automatically** — when the tunnel drops (network change, sleep, gateway timeout), reconnect after 2, 5, 10, 20, 30, then every 60 seconds until you disconnect. While offline it waits for the network and retries as soon as it is back. Wrong credentials or certificate stop the retries.
+- **Don't change routes or DNS** runs openfortivpn with `--no-routes --no-dns` (use it for secondary tunnels).
+- **Static routes**: CIDRs, one per line, routed through this tunnel's ppp interface while it is up. Needs the route permission: the panel shows an **Update** banner when it is missing.
+- **Connect at launch**: connect when FortiBar starts.
+- **Reconnect automatically**: when the tunnel drops (network change, sleep, gateway timeout), retry after 2, 5, 10, 20, 30, then every 60 seconds until you disconnect. While offline it waits for the network. Wrong credentials or a certificate error stop the retries.
 
-Quitting FortiBar (menu, ⌘Q, logout or `SIGTERM`) disconnects every tunnel first, so openfortivpn restores routes and DNS.
+Quitting FortiBar (⌘Q, logout or `SIGTERM`) disconnects every tunnel first, so openfortivpn restores routes and DNS.
 
 ### Command line
 
@@ -140,24 +109,22 @@ fortibar list                     # servers and their state
 fortibar status [--json]          # active tunnels: time, IP, ppp interface, routes
 fortibar connect office           # name, unique prefix or id; waits until up
 fortibar disconnect office        # or: disconnect --all
-fortibar logs -f                  # openfortivpn output (~/Library/Logs/FortiBar)
+fortibar logs -f                  # openfortivpn output
 
 fortibar add "Branch" --host vpn.example.com --port 10443 --user me --password \
     --no-routes-dns --route 10.20.30.0/24
 fortibar edit branch --add-route 10.40.0.0/16 --auto-connect --auto-reconnect
 fortibar show branch
 fortibar remove branch --yes      # also deletes the saved password
-fortibar settings --allow-multiple on --menu-bar-icon monochrome
-fortibar permission update        # sudo rule incl. static routes (admin dialog)
+fortibar settings --allow-multiple on
+fortibar permission update        # reinstall the sudo rule (admin dialog)
 ```
 
-Connect and disconnect run through the app (started in the background if needed), which owns the tunnels, the Keychain and the sudo rule. Passwords are read with `--password` (prompt) or `--password-stdin`, never from arguments.
-
-The app sends native macOS notifications on connect, disconnect, and errors.
+`fortibar help` lists every option. Commands run through the app (started in the background if needed), which owns the tunnels, the Keychain and the sudo rule. Passwords are read with `--password` (prompt) or `--password-stdin`, never from arguments.
 
 ## Configuration
 
-Server profiles are stored at `~/Library/Application Support/FortiBar/config.json`. You can edit them through the Settings GUI or manually:
+Servers and settings live in `~/Library/Application Support/FortiBar/config.json`, the log in `~/Library/Logs/FortiBar`. Edit them in Settings or by hand:
 
 ```json
 {
@@ -179,63 +146,52 @@ Optional fields, written only when used:
 | Field | Where | Meaning |
 |-------|-------|---------|
 | `allow_multiple_connections` | top level | Run several tunnels at once (default `false`) |
-| `menu_bar_icon` | top level | `classic` (default) or `monochrome` |
+| `trusted_cert` | server | SHA-256 digest of the pinned gateway certificate (see below) |
 | `no_routes_dns` | server | Pass `--no-routes --no-dns` (default `false`) |
-| `static_routes` | server | CIDRs routed through the tunnel's ppp interface, e.g. `["10.20.30.0/24"]` |
+| `static_routes` | server | CIDRs routed through the tunnel, e.g. `["10.20.30.0/24"]` |
 | `auto_connect` | server | Connect when FortiBar starts (default `false`) |
 | `auto_reconnect` | server | Reconnect when the tunnel drops (default `false`) |
 
-Passwords are **not** stored in this file — they live in the macOS Keychain.
+Passwords are never stored in this file; they live in the Keychain.
 
-The `trusted_cert` field holds the SHA-256 digest of the gateway certificate. You do not need to fill it in: when a server's certificate cannot be verified (self-signed or an internal CA), the first connection trusts it, saves the digest here and connects. From then on only that certificate is accepted, and a different one fails with a certificate error until you clear the field (Settings → server → Certificate, or `fortibar edit <server> --no-cert`) to trust the new one.
+### Certificate pinning
+
+You do not need to fill in `trusted_cert`. When a gateway's certificate cannot be verified (self-signed or an internal CA), the first connection trusts it, saves its digest and connects. From then on only that certificate is accepted. To trust a renewed certificate, clear the field (server editor → Certificate, or `fortibar edit <server> --no-cert`); the next connection pins the new one.
 
 ## Troubleshooting
 
-**"openfortivpn not found"** — Check the binary path in Settings → General. Run `which openfortivpn` to find yours.
-
-**"Administrator permission not set up"** — The sudo rule is missing or points to another openfortivpn path. Open Settings → Permission and click **Set Up…** (or **Update…**).
-
-**"FortiBar is damaged" / "cannot be opened"** — See [First launch](#first-launch).
-
-**"Certificate error"** — The gateway presents a different certificate than the one pinned on the first connection. If you expect that (the certificate was renewed), clear the server's Certificate field; the next connection pins the new one. Otherwise do not connect: it can mean someone is intercepting the traffic.
-
-**Connection fails** — Open Settings → Log tab for details. 
+- **"openfortivpn not found"**: check the path in Settings → General against `which openfortivpn`.
+- **"Administrator permission not set up"**: the sudo rule is missing or points to another openfortivpn. Settings → Permission → **Set Up…** (or **Update…**).
+- **"FortiBar is damaged" / "cannot be opened"**: see [First launch](#first-launch).
+- **"Certificate error"**: the gateway presents a different certificate than the pinned one. If it was renewed, clear the server's Certificate field. Otherwise do not connect: someone may be intercepting the traffic.
+- **Connection fails**: Settings → Log shows the openfortivpn output.
 
 ## Uninstall
 
-1. Settings → Permission → **Remove**
-2. Quit FortiBar
-3. Delete from Applications: `rm -rf /Applications/FortiBar.app`
-4. Remove config: `rm -rf ~/Library/Application\ Support/FortiBar ~/Library/Logs/FortiBar`
-5. Remove the saved passwords (Keychain Access, service `com.romanvassilchenko.FortiBar.vpn`)
+1. Settings → Permission → **Remove**, then quit FortiBar.
+2. `rm -rf /Applications/FortiBar.app ~/Library/Application\ Support/FortiBar ~/Library/Logs/FortiBar`
+3. Delete the saved passwords in Keychain Access (service `com.romanvassilchenko.FortiBar.vpn`).
 
-If you followed the manual setup of older versions, also run `sudo rm /etc/sudoers.d/openfortivpn`.
+## Upgrading from OpenFortiMac
 
-## Upgrading from FortiBar
+FortiBar has its own bundle identifier, so it installs next to OpenFortiMac. Quit OpenFortiMac and start FortiBar once; it migrates your data:
 
-FortiBar is the new name of FortiBar with a new bundle identifier, so it is a separate app. Quit FortiBar, then start FortiBar once and it migrates your data automatically:
+- **Servers, settings and logs** move from the `OpenFortiMac` folders in `~/Library/Application Support` and `~/Library/Logs`.
+- **Passwords** are copied to FortiBar's Keychain service and removed from the old one. If macOS asks whether FortiBar can use the old items, choose **Always Allow** (a refusal is retried on the next launch).
+- **The sudo rule**: open Settings → Permission → **Update…**; one administrator prompt installs `/etc/sudoers.d/fortibar` and removes `/etc/sudoers.d/openfortimac`. A rule you wrote by hand (for example `/etc/sudoers.d/openfortivpn`) is left alone: delete it with `sudo rm`.
+- **Launch at login** must be turned on again in FortiBar's Settings (remove OpenFortiMac from System Settings → General → Login Items).
+- **The CLI** is now `fortibar` instead of `openfortimac`: update symlinks and scripts.
 
-- **Servers and settings** move from `~/Library/Application Support/FortiBar` to `~/Library/Application Support/FortiBar`, and the log to `~/Library/Logs/FortiBar`.
-- **Passwords** are copied from the old Keychain service into the new one and then deleted from the old one. macOS may ask whether FortiBar can use the old items: choose **Always Allow**. If you decline, the migration is retried on the next launch.
-- **The sudo rule** `/etc/sudoers.d/fortibar` keeps working until you open **Settings → Permission** and click **Update…**: one administrator prompt installs `/etc/sudoers.d/fortibar` and removes the old rule.
-- **Launch at login** is tied to the app identity: remove FortiBar from System Settings → General → Login Items and turn it on again in FortiBar's Settings.
-- The CLI is now `fortibar` (it was `fortibar`): update symlinks and scripts.
-
-Then delete `/Applications/FortiBar.app`.
+Then delete `/Applications/OpenFortiMac.app`.
 
 ## Releasing
 
-The [Release workflow](.github/workflows/release.yml) builds a universal DMG signed with the "FortiBar Self-Signed" certificate. When `main` gets a `MARKETING_VERSION` that has no tag yet, it attests the build provenance, scans the DMG on VirusTotal and publishes the GitHub release (creating the `vX.Y.Z` tag), using the matching `CHANGELOG.md` section as the notes. Pull requests only build the DMG and upload it as an artifact. A tag with a suffix (for example `v1.4.0-rc.1`) publishes a pre-release.
+Bump `MARKETING_VERSION` in Xcode and add a `## vX.Y.Z` section to `CHANGELOG.md`. When `main` gets a version that has no tag yet, the [Release workflow](.github/workflows/release.yml) runs `./build_dmg.sh` to build a universal DMG signed with the "FortiBar Self-Signed" certificate, attests the build provenance, scans it on VirusTotal and publishes the `vX.Y.Z` release with the changelog section as notes. Pushing a tag with a suffix (`v1.4.0-rc.1`) publishes a pre-release; pull requests only build the DMG.
 
-Repository settings it uses: secrets `SIGNING_CERT_P12`, `SIGNING_CERT_PASSWORD`, optionally `VIRUSTOTAL_API_KEY`, and the variable `EXPECTED_CERT_SHA1`. Keep a backup of the `.p12`: a new certificate changes the app's identity and macOS asks for Keychain access again.
+Repository secrets: `SIGNING_CERT_P12`, `SIGNING_CERT_PASSWORD`, optionally `VIRUSTOTAL_API_KEY`; variable `EXPECTED_CERT_SHA1`. Keep a backup of the `.p12`: a new certificate changes the app's identity and macOS asks for Keychain access again.
 
-Local builds use the certificate when it is in your keychain and fall back to an ad-hoc signature otherwise. `./build_dmg.sh` is what the workflow runs.
-
-Version bumps go in `MARKETING_VERSION` in Xcode plus a `## vX.Y.Z` section in `CHANGELOG.md`.
-
-The demo GIF at the top of this README is generated with `python3 scripts/make_panel_demo.py` (macOS and ffmpeg required) from example data.
+Tests: `xcodebuild test -project FortiBar.xcodeproj -scheme FortiBar -destination 'platform=macOS'`. The demo GIF is generated with `python3 scripts/make_panel_demo.py` (needs ffmpeg).
 
 ## Attribution
 
 FortiBar is a fork of [OpenFortiMac](https://github.com/rempairamore/OpenFortiMac) by [@rempairamore](https://github.com/rempairamore). The original work is copyright its author and licensed under the GNU General Public License v3.0; this project is distributed under the same license (see [LICENSE](LICENSE)), and all original copyright and license notices are retained. FortiBar wraps [openfortivpn](https://github.com/adrienverge/openfortivpn) by Adrien Vergé. FortiBar is not affiliated with Fortinet.
-
