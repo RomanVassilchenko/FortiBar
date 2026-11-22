@@ -78,6 +78,24 @@ struct SudoersAndRoutesTests {
     }
 }
 
+struct ConfigCodingTests {
+    @Test func oldMenuBarIconSettingIsIgnoredAndNotWrittenBack() throws {
+        let json = """
+        {"servers":[{"name":"Office","host":"vpn.example.com","username":"me"}],
+         "openfortivpn_path":"/usr/local/bin/openfortivpn",
+         "allow_multiple_connections":true,
+         "menu_bar_icon":"classic"}
+        """
+        let config = try JSONDecoder().decode(AppConfig.self, from: Data(json.utf8))
+        #expect(config.servers.map(\.name) == ["Office"])
+        #expect(config.openfortivpnPath == "/usr/local/bin/openfortivpn")
+        #expect(config.allowMultipleConnections)
+
+        let encoded = try #require(String(data: JSONEncoder().encode(config), encoding: .utf8))
+        #expect(!encoded.contains("menu_bar_icon"))
+    }
+}
+
 struct MigrationTests {
     private func makeTempRoot() throws -> URL {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("fortibar-test-\(UUID().uuidString)")

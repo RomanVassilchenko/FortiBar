@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.5.0
+
+### Changed
+- The menu bar icon is always the template shield that follows the menu bar appearance and shows the number of connected tunnels. The Classic lock style, its setting and `fortibar settings --menu-bar-icon` are gone (an old `menu_bar_icon` key in config.json is ignored)
+- Cleaner interface: consistent spacing, plain list rows in Settings, native sheet buttons, clearer empty states, shorter labels; the config path is shown with `~`
+- Redrawn app icon, new website and a shorter README
+
 ## v1.4.0
 
 ### Added

@@ -56,14 +56,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             object: nil
         )
 
-        // The icon style is a setting
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(vpnStateChanged),
-            name: .configChanged,
-            object: nil
-        )
-
         installSignalHandler()
         cliBridge.start()
         vpnManager.connectAutoStartServers()
@@ -105,7 +97,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         popover.contentViewController?.view.window?.makeKey()
     }
 
-    /// Right click keeps a classic menu for quick access.
+    /// Right click keeps a plain menu for quick access.
     private func showContextMenu() {
         popover.performClose(nil)
 
@@ -177,8 +169,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let button = statusItem.button else { return }
         let image = StatusIcon.image(
             connected: vpnManager.connectedCount,
-            busy: vpnManager.busyCount,
-            style: configManager.config.menuBarIconStyle
+            busy: vpnManager.busyCount
         )
         button.image = image
         button.toolTip = vpnManager.tunnels.isEmpty
@@ -220,6 +211,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let window = NSWindow(contentViewController: hostingController)
         window.title = "FortiBar Settings"
         window.styleMask = [.titled, .closable, .miniaturizable]
+        // The tab bar reads as the window's toolbar: one surface from the title down to the divider
+        window.titlebarAppearsTransparent = true
         window.center()
         window.setFrameAutosaveName("SettingsWindow")
         window.level = .floating

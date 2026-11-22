@@ -1,20 +1,11 @@
 import Foundation
 
-/// Menu bar icon look, chosen in Settings › General.
-enum MenuBarIconStyle: String, Codable, CaseIterable {
-    /// Lock icons, green when connected (the original look)
-    case classic
-    /// Template shield that follows the menu bar appearance and shows the tunnel count
-    case monochrome
-}
-
 struct AppConfig: Codable {
     var servers: [VPNServer]
     var openfortivpnPath: String
     /// Off by default: connecting to a server first drops the current tunnel,
     /// as in earlier versions. On: every server runs its own tunnel side by side.
     var allowMultipleConnections: Bool
-    var menuBarIconStyle: MenuBarIconStyle
 
     static let defaultOpenfortivpnPath = "/opt/homebrew/bin/openfortivpn"
 
@@ -27,19 +18,18 @@ struct AppConfig: Codable {
         case servers
         case openfortivpnPath = "openfortivpn_path"
         case allowMultipleConnections = "allow_multiple_connections"
-        case menuBarIconStyle = "menu_bar_icon"
+        // "menu_bar_icon" (classic/monochrome) from 1.4 is no longer a setting:
+        // it is not listed here, so old files still decode and the key is dropped on save
     }
 
     init(
         servers: [VPNServer],
         openfortivpnPath: String,
-        allowMultipleConnections: Bool = false,
-        menuBarIconStyle: MenuBarIconStyle = .classic
+        allowMultipleConnections: Bool = false
     ) {
         self.servers = servers
         self.openfortivpnPath = openfortivpnPath
         self.allowMultipleConnections = allowMultipleConnections
-        self.menuBarIconStyle = menuBarIconStyle
     }
 
     init(from decoder: Decoder) throws {
@@ -47,9 +37,6 @@ struct AppConfig: Codable {
         servers = try container.decodeIfPresent([VPNServer].self, forKey: .servers) ?? []
         openfortivpnPath = try container.decodeIfPresent(String.self, forKey: .openfortivpnPath) ?? Self.defaultOpenfortivpnPath
         allowMultipleConnections = try container.decodeIfPresent(Bool.self, forKey: .allowMultipleConnections) ?? false
-        // Unknown values (e.g. from a newer version) fall back to the default look
-        let style = try container.decodeIfPresent(String.self, forKey: .menuBarIconStyle)
-        menuBarIconStyle = style.flatMap(MenuBarIconStyle.init(rawValue:)) ?? .classic
     }
 
     func encode(to encoder: Encoder) throws {
@@ -59,9 +46,6 @@ struct AppConfig: Codable {
         // Written only when enabled, so existing config files stay unchanged
         if allowMultipleConnections {
             try container.encode(true, forKey: .allowMultipleConnections)
-        }
-        if menuBarIconStyle != .classic {
-            try container.encode(menuBarIconStyle, forKey: .menuBarIconStyle)
         }
     }
 

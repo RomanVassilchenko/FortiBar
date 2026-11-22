@@ -59,7 +59,7 @@ struct SettingsView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 540, height: 660)
+        .frame(width: 540, height: 560)
         .onReceive(NotificationCenter.default.publisher(for: .showSettingsTab)) { notification in
             if let tab = notification.object as? SettingsTab {
                 selectedTab = tab
@@ -107,7 +107,9 @@ struct SettingsView: View {
             ForEach(SettingsTab.allCases, id: \.self) { tab in
                 Button { selectedTab = tab } label: {
                     VStack(spacing: 3) {
-                        Image(systemName: tab.symbol).font(.system(size: 18))
+                        Image(systemName: tab.symbol)
+                            .font(.system(size: 18))
+                            .frame(height: 22)
                         Text(tab.title).font(.caption)
                     }
                     .frame(width: 80, height: 48)
@@ -117,9 +119,10 @@ struct SettingsView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityAddTraits(selectedTab == tab ? .isSelected : [])
             }
         }
-        .padding(.vertical, 8)
+        .padding(.bottom, 8)
         .frame(maxWidth: .infinity)
     }
 
@@ -141,20 +144,23 @@ struct SettingsView: View {
     private var serversTab: some View {
         VStack(spacing: 0) {
             if viewModel.servers.isEmpty {
-                VStack(spacing: 10) {
+                VStack(spacing: 8) {
                     Image(systemName: "server.rack")
-                        .font(.largeTitle)
-                        .foregroundColor(.secondary)
-                    Text("Add your first server")
-                        .font(.headline)
-                    Text("Host, port and username of your FortiGate SSL VPN.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Button("Add server") { showingAddServer = true }
+                        .font(.system(size: 36, weight: .light))
+                        .foregroundStyle(.secondary)
+                        .padding(.bottom, 4)
+                    Text("No Servers")
+                        .font(.title3.weight(.semibold))
+                    Text("Add the host, port and username of your FortiGate SSL VPN.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    Button("Add Server…") { showingAddServer = true }
                         .glassButtonStyle(prominent: true)
                         .controlSize(.large)
-                        .padding(.top, 4)
+                        .padding(.top, 8)
                 }
+                .padding(32)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List(selection: $selectedServer) {
@@ -171,7 +177,6 @@ struct SettingsView: View {
                             }
                         )
                         .tag(server)
-                        .listRowSeparator(.hidden)
                         .onTapGesture(count: 2) {
                             selectedServer = server
                             showingEditServer = true
@@ -181,25 +186,23 @@ struct SettingsView: View {
                 }
                 .listStyle(.inset)
                 .id(viewModel.refreshID)
-            }
-            
-            Divider()
-            
-            HStack {
-                Button(action: { showingAddServer = true }) {
-                    Label("Add server", systemImage: "plus")
-                }
-                
-                Spacer()
-                
-                if !viewModel.servers.isEmpty {
+
+                Divider()
+
+                HStack {
+                    Button(action: { showingAddServer = true }) {
+                        Label("Add Server…", systemImage: "plus")
+                    }
+
+                    Spacer()
+
                     Text("Double-click to edit, drag to reorder")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
             }
-            .padding(10)
-            .background(Color(NSColor.controlBackgroundColor))
         }
     }
     
@@ -259,7 +262,6 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .padding(.top, 8)
     }
     
     private var sudoersActions: AnyView? {
@@ -361,16 +363,16 @@ struct SettingsView: View {
     
     private var generalTab: some View {
         Form {
-            Section("openfortivpn Binary") {
+            Section {
                 HStack {
-                    LabeledContent("Path:") {
-                        TextField("", text: $viewModel.openfortivpnPath)
+                    LabeledContent("Path") {
+                        TextField("", text: $viewModel.openfortivpnPath, prompt: Text(AppConfig.defaultOpenfortivpnPath))
                             .labelsHidden()
-                            .font(.system(.body, design: .monospaced))
+                            .font(.system(.callout, design: .monospaced))
                             .multilineTextAlignment(.trailing)
                     }
                     
-                    Button("Browse...") {
+                    Button("Choose…") {
                         let panel = NSOpenPanel()
                         panel.canChooseFiles = true
                         panel.canChooseDirectories = false
@@ -382,10 +384,13 @@ struct SettingsView: View {
                     }
                 }
                 
+            } header: {
+                Text("openfortivpn")
+            } footer: {
                 if !viewModel.isOpenfortivpnValid {
-                    Text("⚠️ Binary not found at this path")
+                    Label("No executable at this path. Install it with brew install openfortivpn.", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
-                        .foregroundColor(.orange)
+                        .foregroundStyle(.orange)
                 }
             }
             
@@ -396,34 +401,21 @@ struct SettingsView: View {
             } footer: {
                 Text("Each server runs its own tunnel. Give secondary servers \"Don't change routes or DNS\" so only one tunnel owns the default route and resolver. When off, connecting to a server drops the current one.")
                     .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            
-            Section {
-                Picker("Menu bar icon", selection: $viewModel.menuBarIconStyle) {
-                    Text("Classic").tag(MenuBarIconStyle.classic)
-                    Text("Monochrome").tag(MenuBarIconStyle.monochrome)
-                }
-            } header: {
-                Text("Appearance")
-            } footer: {
-                Text("Classic shows a lock that turns green when connected. Monochrome shows a shield that follows the menu bar appearance and the number of connected tunnels.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
             
             Section("Startup") {
-                Toggle("Launch at Login", isOn: $viewModel.launchAtLogin)
+                Toggle("Launch at login", isOn: $viewModel.launchAtLogin)
             }
             
             Section("Config File") {
                 HStack {
-                    Text(ConfigManager.configPath.path)
+                    Text((ConfigManager.configPath.path as NSString).abbreviatingWithTildeInPath)
                         .font(.system(.caption, design: .monospaced))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                     
-                    Spacer()
+                    Spacer(minLength: 12)
                     
                     Button("Reveal in Finder") {
                         NSWorkspace.shared.selectFile(
@@ -431,12 +423,10 @@ struct SettingsView: View {
                             inFileViewerRootedAtPath: ConfigManager.configPath.deletingLastPathComponent().path
                         )
                     }
-                    .buttonStyle(.borderless)
                 }
             }
         }
         .formStyle(.grouped)
-        .padding(.top, 8)
     }
     
     // MARK: - Log Tab
@@ -446,24 +436,29 @@ struct SettingsView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 2) {
-                        if viewModel.logs.isEmpty {
-                            Text("No logs yet. Connect to a VPN to see activity.")
-                                .foregroundColor(.secondary)
-                                .padding()
-                        } else {
-                            ForEach(Array(viewModel.logs.enumerated()), id: \.offset) { index, line in
-                                Text(line)
-                                    .font(.system(.caption, design: .monospaced))
-                                    .textSelection(.enabled)
-                                    .id(index)
-                            }
-                            .padding(.horizontal)
+                        ForEach(Array(viewModel.logs.enumerated()), id: \.offset) { index, line in
+                            Text(line)
+                                .font(.system(.caption, design: .monospaced))
+                                .textSelection(.enabled)
+                                .id(index)
                         }
+                        .padding(.horizontal)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 8)
                 }
                 .background(Color(NSColor.textBackgroundColor))
+                .overlay {
+                    if viewModel.logs.isEmpty {
+                        VStack(spacing: 6) {
+                            Text("No Log Yet")
+                                .font(.title3.weight(.semibold))
+                            Text("openfortivpn output appears here when you connect.")
+                                .font(.callout)
+                        }
+                        .foregroundStyle(.secondary)
+                    }
+                }
                 .onAppear {
                     scrollToBottom(proxy: proxy)
                 }
@@ -474,8 +469,8 @@ struct SettingsView: View {
             
             Divider()
             
-            HStack {
-                Button("Copy to Clipboard") {
+            HStack(spacing: 12) {
+                Button("Copy") {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(viewModel.logs.joined(separator: "\n"), forType: .string)
                 }
@@ -495,8 +490,8 @@ struct SettingsView: View {
                 }
                 .buttonStyle(.borderless)
             }
-            .padding(8)
-            .background(Color(NSColor.controlBackgroundColor))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
         }
     }
     
@@ -515,54 +510,47 @@ struct ServerRowView: View {
     let onDelete: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Image(systemName: server.iconName)
-                .font(.system(size: 15))
-                .foregroundColor(.accentColor)
-                .frame(width: 32, height: 32)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.accentColor.opacity(0.12))
-                )
+                .font(.system(size: 14))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 28, height: 28)
+                .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(server.name)
-                    .font(.headline)
+                    .lineLimit(1)
                 Text("\(server.host):\(server.port) · \(server.username)")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
 
-            Spacer()
+            Spacer(minLength: 8)
 
             if KeychainHelper.read(for: server.id) == nil {
                 Text("No password")
-                    .font(.caption2.weight(.medium))
-                    .foregroundColor(.orange)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Capsule().fill(Color.orange.opacity(0.15)))
+                    .font(.caption)
+                    .foregroundStyle(.orange)
             }
 
             Button(action: onEdit) {
                 Image(systemName: "pencil")
             }
             .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
             .help("Edit Server")
+            .accessibilityLabel("Edit \(server.name)")
 
             Button(action: onDelete) {
                 Image(systemName: "trash")
-                    .foregroundColor(.red.opacity(0.7))
             }
             .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
             .help("Delete Server")
+            .accessibilityLabel("Delete \(server.name)")
         }
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(Color.primary.opacity(0.1))
-        )
+        .padding(.vertical, 4)
         .contentShape(Rectangle())
     }
 }
@@ -594,46 +582,41 @@ struct ServerEditView: View {
         VStack(spacing: 0) {
             Text(isEditing ? "Edit Server" : "Add Server")
                 .font(.headline)
-                .padding(.top, 16)
-                .padding(.bottom, 12)
+                .padding(.top, 18)
+                .padding(.bottom, 4)
             
             Form {
-                TextField("Name:", text: $name)
-                    .frame(width: 280)
-                TextField("Host:", text: $host)
-                    .frame(width: 280)
-                TextField("Port:", text: $port)
-                    .frame(width: 280)
-                TextField("Username:", text: $username)
-                    .frame(width: 280)
-                SecureField("Password:", text: $password)
-                    .frame(width: 280)
-                LabeledContent("Certificate:") {
+                TextField("Name", text: $name, prompt: Text("Office VPN"))
+                TextField("Host", text: $host, prompt: Text("vpn.example.com"))
+                TextField("Port", text: $port, prompt: Text("443"))
+                TextField("Username", text: $username, prompt: Text("Required"))
+                SecureField("Password", text: $password, prompt: Text("Required to connect"))
+                LabeledContent("Certificate") {
                     TextField("", text: $trustedCert, prompt: Text("Trusted on first connect"))
                         .labelsHidden()
-                        .font(.system(size: 11, design: .monospaced))
-                        .frame(width: 280)
+                        .font(trustedCert.isEmpty ? .body : .system(.caption, design: .monospaced))
+                        .multilineTextAlignment(.trailing)
                 }
-                LabeledContent("Icon:") {
-                    HStack(spacing: 4) {
+                LabeledContent("Icon") {
+                    HStack(spacing: 2) {
                         ForEach(VPNServer.iconChoices, id: \.self) { choice in
                             Button {
                                 icon = choice
                             } label: {
                                 Image(systemName: choice)
                                     .frame(width: 28, height: 24)
-                                    .foregroundColor(icon == choice ? .accentColor : .secondary)
+                                    .foregroundStyle(icon == choice ? Color.accentColor : .secondary)
                                     .background(
-                                        RoundedRectangle(cornerRadius: 6)
-                                            .fill(icon == choice ? Color.accentColor.opacity(0.15) : Color.clear)
+                                        icon == choice ? Color.accentColor.opacity(0.15) : Color.clear,
+                                        in: RoundedRectangle(cornerRadius: 6, style: .continuous)
                                     )
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel(choice)
+                            .accessibilityAddTraits(icon == choice ? .isSelected : [])
                         }
                     }
-                    .frame(width: 280, alignment: .leading)
                 }
                 
                 Section {
@@ -642,10 +625,10 @@ struct ServerEditView: View {
                         .help("Reconnects when the tunnel drops, e.g. after a network change, until you disconnect")
                     Toggle("Don't change routes or DNS", isOn: $noRoutesDNS)
                         .help("Runs openfortivpn with --no-routes --no-dns")
-                    LabeledContent("Static routes:") {
+                    LabeledContent("Static routes") {
                         TextField("", text: $staticRoutes, prompt: Text("10.20.30.0/24"), axis: .vertical)
                             .labelsHidden()
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(.system(.callout, design: .monospaced))
                             .lineLimit(2...4)
                             .multilineTextAlignment(.trailing)
                     }
@@ -655,27 +638,27 @@ struct ServerEditView: View {
                 } footer: {
                     Text("For a secondary tunnel next to another one: leave routes and DNS to the main tunnel and list the networks to reach through this one, one CIDR per line.")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
             }
             .formStyle(.grouped)
             
-            if let error = validationError {
-                Text(error)
-                    .font(.caption)
-                    .foregroundColor(.red)
-                    .padding(.horizontal)
-            }
-            
-            Spacer()
-            
-            HStack {
+            Divider()
+
+            HStack(spacing: 12) {
+                if let error = validationError {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .lineLimit(2)
+                }
+
+                Spacer()
+
                 Button("Cancel") {
                     dismiss()
                 }
                 .keyboardShortcut(.cancelAction)
-                
-                Spacer()
                 
                 Button(isEditing ? "Save" : "Add") {
                     if validate() {
@@ -686,9 +669,10 @@ struct ServerEditView: View {
                 .keyboardShortcut(.defaultAction)
                 .disabled(name.isEmpty || host.isEmpty || username.isEmpty)
             }
-            .padding()
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
         }
-        .frame(width: 440, height: 680)
+        .frame(width: 440, height: 660)
         .onAppear {
             if let server = server {
                 name = server.name
@@ -797,14 +781,6 @@ class SettingsViewModel: ObservableObject {
             }
         }
     }
-    @Published var menuBarIconStyle: MenuBarIconStyle = .classic {
-        didSet {
-            if oldValue != menuBarIconStyle {
-                ConfigManager.shared.saveMenuBarIconStyle(menuBarIconStyle)
-                NotificationCenter.default.post(name: .configChanged, object: nil)
-            }
-        }
-    }
     @Published var launchAtLogin: Bool = false {
         didSet {
             if oldValue != launchAtLogin {
@@ -831,7 +807,6 @@ class SettingsViewModel: ObservableObject {
         loadLogs()
         openfortivpnPath = ConfigManager.shared.config.openfortivpnPath
         allowMultipleConnections = ConfigManager.shared.config.allowMultipleConnections
-        menuBarIconStyle = ConfigManager.shared.config.menuBarIconStyle
         loadLaunchAtLogin()
         refreshSudoersStatus()
 
@@ -854,7 +829,6 @@ class SettingsViewModel: ObservableObject {
             self.loadServers()
             self.refreshID = UUID()
             self.allowMultipleConnections = config.allowMultipleConnections
-            self.menuBarIconStyle = config.menuBarIconStyle
             self.openfortivpnPath = config.openfortivpnPath
         }
 

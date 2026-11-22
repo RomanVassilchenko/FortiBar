@@ -11,12 +11,13 @@ struct MenuPanelView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             tunnelCards
-                .padding(12)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
 
             if let banner = setupBanner {
                 banner
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 12)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 14)
             }
 
             Divider()
@@ -36,12 +37,11 @@ struct MenuPanelView: View {
     private var tunnelCards: some View {
         VStack(spacing: 8) {
             if vpn.tunnels.isEmpty {
-                TunnelCard(tunnel: nil, iconStyle: model.iconStyle, onDisconnect: nil, disconnectShortcut: false)
+                TunnelCard(tunnel: nil, onDisconnect: nil, disconnectShortcut: false)
             }
             ForEach(vpn.tunnels) { tunnel in
                 TunnelCard(
                     tunnel: tunnel,
-                    iconStyle: model.iconStyle,
                     onDisconnect: { model.disconnect(serverID: tunnel.serverID) },
                     // ⌘D stays unambiguous: only with a single tunnel
                     disconnectShortcut: vpn.tunnels.count == 1
@@ -78,22 +78,24 @@ struct MenuPanelView: View {
     @ViewBuilder
     private var serverSection: some View {
         if model.servers.isEmpty {
-            VStack(spacing: 8) {
-                Image(systemName: "server.rack")
-                    .font(.title2)
-                    .foregroundColor(.secondary)
-                Text("Add your first server")
-                    .font(.callout)
-                Button("Add server") { model.openSettings(.servers, .add) }
+            VStack(spacing: 6) {
+                Text("No Servers")
+                    .font(.callout.weight(.semibold))
+                Text("Add your FortiGate SSL VPN to connect.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("Add Server…") { model.openSettings(.servers, .add) }
+                    .glassButtonStyle()
                     .controlSize(.small)
+                    .padding(.top, 4)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
         } else {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Servers")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
                     .padding(.horizontal, 16)
 
                 if model.servers.count > maxVisibleServers {
@@ -153,15 +155,12 @@ struct MenuPanelView: View {
 // MARK: - State helpers
 
 extension VPNState {
-    /// Status card symbol, matching the menu bar icon style.
-    func iconSymbol(style: MenuBarIconStyle) -> String {
-        switch (self, style) {
-        case (.disconnected, .classic): return "lock.open"
-        case (.connecting, .classic), (.disconnecting, .classic), (.reconnecting, .classic): return "arrow.triangle.2.circlepath"
-        case (.connected, .classic): return "lock.fill"
-        case (.disconnected, .monochrome): return "shield"
-        case (.connecting, .monochrome), (.disconnecting, .monochrome), (.reconnecting, .monochrome): return "shield.lefthalf.filled"
-        case (.connected, .monochrome): return "checkmark.shield.fill"
+    /// Status card symbol, the same shields as the menu bar icon.
+    var iconSymbol: String {
+        switch self {
+        case .disconnected: return "shield"
+        case .connecting, .disconnecting, .reconnecting: return "shield.lefthalf.filled"
+        case .connected: return "checkmark.shield.fill"
         }
     }
 
@@ -180,7 +179,6 @@ extension VPNState {
 /// only the status puck and the buttons are glass.
 private struct TunnelCard: View {
     let tunnel: TunnelStatus?
-    let iconStyle: MenuBarIconStyle
     let onDisconnect: (() -> Void)?
     let disconnectShortcut: Bool
 
@@ -228,7 +226,7 @@ private struct TunnelCard: View {
             if busy {
                 ProgressView().controlSize(.small)
             } else {
-                Image(systemName: state.iconSymbol(style: iconStyle))
+                Image(systemName: state.iconSymbol)
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(tint)
             }
@@ -309,20 +307,24 @@ private struct SetupBanner: View {
     let onAction: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
+        // Icon column as wide as the status puck, so the texts line up with the tunnel name
+        HStack(alignment: .top, spacing: 12) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
+                .frame(width: 36)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.callout.weight(.medium))
                 Text(detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button(action, action: onAction)
+                    .glassButtonStyle()
+                    .controlSize(.small)
+                    .padding(.top, 6)
             }
-            Spacer(minLength: 4)
-            Button(action, action: onAction)
-                .glassButtonStyle()
-                .controlSize(.small)
+            Spacer(minLength: 0)
         }
     }
 }
@@ -392,7 +394,7 @@ private struct PanelServerRow: View {
         } else if hasPassword {
             Text(server.host).foregroundStyle(.secondary)
         } else {
-            Text("No password · click to edit").foregroundStyle(.orange)
+            Text("No password").foregroundStyle(.orange)
         }
     }
 }

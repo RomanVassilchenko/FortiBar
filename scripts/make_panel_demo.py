@@ -2,7 +2,7 @@
 
 Draws every frame as SVG (same layout as MenuPanelView.swift: 320pt wide, 12pt padding,
 36pt glass status puck, glass buttons, flat content), rasterizes them at 2x with Quick Look and assembles the GIF with ffmpeg.
-Story: click the menu bar icon, the panel opens, Connect on "Office VPN", connecting, connected.
+Story: click the menu bar shield, the panel opens, Connect on "Office VPN", connecting, connected.
 
 Requires macOS (qlmanage) and ffmpeg (brew install ffmpeg).
 
@@ -67,8 +67,6 @@ def icon(name, cx, cy, color, sw=1.5, scale=1.0):
     g = (f'<g transform="translate({cx} {cy}) scale({scale}) translate(-8 -8)" fill="none" stroke="{color}" '
          f'stroke-width="{sw}" stroke-linecap="round" stroke-linejoin="round">')
     shapes = {
-        "lock": f'<rect x="3" y="7" width="10" height="7.5" rx="1.8" fill="{color}" stroke="none"/><path d="M5 7V5a3 3 0 0 1 6 0v2"/>',
-        "lock-open": f'<rect x="3" y="7" width="10" height="7.5" rx="1.8" fill="{color}" stroke="none"/><path d="M5 7V4.5a3 3 0 0 1 5.6-1.5"/>',
         "globe": '<circle cx="8" cy="8" r="6.2"/><ellipse cx="8" cy="8" rx="2.6" ry="6.2"/><path d="M1.8 8h12.4M2.8 4.8h10.4M2.8 11.2h10.4"/>',
         "building": '<rect x="2.5" y="2" width="7" height="12.5" rx="0.8"/><path d="M9.5 6.5h3.2a0.8 0.8 0 0 1 0.8 0.8v7.2M5 5h2M5 8h2M5 11h2M11.5 9.5h0.01M11.5 12h0.01"/>',
         "house": '<path d="M2 8.2 8 2.8l6 5.4"/><path d="M3.8 7v7h8.4V7"/><path d="M6.6 14v-3.6h2.8V14"/>',
@@ -76,6 +74,9 @@ def icon(name, cx, cy, color, sw=1.5, scale=1.0):
         "plus": '<path d="M8 2.5v11M2.5 8h11"/>',
         "gear": f'<path d="{gear_path()}"/><circle cx="8" cy="8" r="2.2"/>',
         "doc": '<path d="M4 1.8h5.2l3 3V14a0.6 0.6 0 0 1-0.6 0.6H4a0.6 0.6 0 0 1-0.6-0.6V2.4A0.6 0.6 0 0 1 4 1.8z"/><path d="M9 1.8v3.2h3.2M5.6 8h4.8M5.6 10.5h4.8"/>',
+        "shield": '<path d="M8 1.6L13.4 3.5V7.5C13.4 10.9 11.1 13.4 8 14.6C4.9 13.4 2.6 10.9 2.6 7.5V3.5Z"/>',
+        "shield-half": f'<path d="M8 1.6L13.4 3.5V7.5C13.4 10.9 11.1 13.4 8 14.6C4.9 13.4 2.6 10.9 2.6 7.5V3.5Z"/><path d="M8 1.6V14.6C4.9 13.4 2.6 10.9 2.6 7.5V3.5Z" fill="{color}" stroke="none"/>',
+        "shield-check": f'<path d="M8 1.6L13.4 3.5V7.5C13.4 10.9 11.1 13.4 8 14.6C4.9 13.4 2.6 10.9 2.6 7.5V3.5Z" fill="{color}"/><path d="M5.5 8.1L7.3 9.9L10.6 6.3" stroke="{PAGE}" stroke-width="1.6"/>',
         "plug": '<path d="M6 1.8v3M10 1.8v3"/><rect x="4" y="4.8" width="8" height="4.2" rx="1.2"/><path d="M8 9v5"/>',
         "power": '<path d="M8 1.8v6"/><path d="M4.6 4.2a5.2 5.2 0 1 0 6.8 0"/>',
     }
@@ -126,35 +127,35 @@ def panel(mode, hover=False, pressed=False, angle=0, elapsed="00:00:01"):
     out = []
     tint = {"connected": GREEN, "connecting": ORANGE}.get(mode, DIM)
     # flat header on the popover's own glass: only the puck and the buttons are glass
-    out.append(glass_circle(30, 30, 18, tint))
+    out.append(glass_circle(34, 30, 18, tint))
     if mode == "connecting":
-        out.append(spinner(30, 30, angle))
+        out.append(spinner(34, 30, angle))
     else:
-        out.append(icon("lock" if mode == "connected" else "lock-open", 30, 30, tint, sw=1.6, scale=1.15))
+        out.append(icon("shield-check" if mode == "connected" else "shield", 34, 30, tint, sw=1.5, scale=1.15))
 
     if mode == "disconnected":
-        out.append(text(60, 27, "Not connected", 14, weight=600))
-        out.append(text(60, 43, "Choose a server to connect", 11.5, DIM))
+        out.append(text(64, 27, "Not connected", 14, weight=600))
+        out.append(text(64, 43, "Choose a server to connect", 11.5, DIM))
     else:
-        out.append(text(60, 27, "Office VPN", 14, weight=600))
+        out.append(text(64, 27, "Office VPN", 14, weight=600))
         sub = "Connecting…" if mode == "connecting" else f"Connected · {elapsed}"
-        out.append(text(60, 43, sub, 11.5, DIM, extra='font-variant-numeric="tabular-nums"'))
+        out.append(text(64, 43, sub, 11.5, DIM, extra='font-variant-numeric="tabular-nums"'))
         if mode == "connecting":
             bw, label, btint = 64, "Cancel", None
         else:
             bw, label, btint = 90, "Disconnect", RED
-        bx = W - 12 - bw
+        bx = W - 16 - bw
         out.append(glass_capsule(bx, 18, bw, 24, btint))
         out.append(text(bx + bw / 2, 34.5, label, 12.5, "#fff" if btint else INK, 500, "middle"))
         if mode == "connected":
-            out.append(icon("globe", 68, 66, DIM, sw=1.3))
-            out.append(text(80, 70, "10.212.134.5", 11.5, DIM))
-            out.append(icon("plug", 168, 66, DIM, sw=1.3))
-            out.append(text(180, 70, "ppp0", 11.5, DIM))
+            out.append(icon("globe", 72, 66, DIM, sw=1.3))
+            out.append(text(84, 70, "10.212.134.5", 11.5, DIM))
+            out.append(icon("plug", 172, 66, DIM, sw=1.3))
+            out.append(text(184, 70, "ppp0", 11.5, DIM))
 
     y = list_top(mode)
     out.append(f'<path d="M0 {y}H{W}" stroke="{DIVIDER}"/>')
-    out.append(text(16, y + 20, "Servers", 11, DIM))
+    out.append(text(16, y + 20, "Servers", 11, DIM, 600))
     for i, (name, host, glyph) in enumerate(SERVERS):
         top = row_top(i, mode)
         active = mode in ("connecting", "connected") and i == 0
@@ -195,8 +196,6 @@ def status_glyph(name, cx, cy, color):
     g = (f'<g transform="translate({cx - 8} {cy - 8})" fill="none" stroke="{color}" '
          f'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">')
     shapes = {
-        "circlepath": '<path d="M12.8 6.4A5 5 0 0 0 3.5 6"/><path d="M2.6 3.4L3.5 6L6.1 5.3"/>'
-                      '<path d="M3.2 9.6A5 5 0 0 0 12.5 10"/><path d="M13.4 12.6L12.5 10L9.9 10.7"/>',
         "wifi": f'<circle cx="8" cy="12.4" r="1.1" fill="{color}" stroke="none"/><path d="M5.5 9.9a3.5 3.5 0 0 1 5 0"/>'
                 '<path d="M3.4 7.7a6.3 6.3 0 0 1 9.2 0"/><path d="M1.3 5.5a9.2 9.2 0 0 1 13.4 0"/>',
         "battery": f'<rect x="1" y="4.5" width="13" height="7" rx="2"/><rect x="2.6" y="6.1" width="8.4" height="3.8" rx="1" fill="{color}" stroke="none"/><path d="M15.4 7v2"/>',
@@ -211,12 +210,9 @@ def menubar(state, highlighted):
     if highlighted:
         # macOS highlights a status item while its popover is open
         out.append(f'<rect x="{ICON_X - 14}" y="2" width="28" height="20" rx="5" fill="rgba(255,255,255,0.22)"/>')
-    if state == "connected":
-        out.append(icon("lock", ICON_X, ICON_Y, GREEN, sw=1.4, scale=0.95))
-    elif state == "connecting":
-        out.append(status_glyph("circlepath", ICON_X, ICON_Y, INK))
-    else:
-        out.append(icon("lock-open", ICON_X, ICON_Y, INK, sw=1.4, scale=0.95))
+    # template shield: follows the menu bar appearance, filled with a check when connected
+    glyph = {"connected": "shield-check", "connecting": "shield-half"}.get(state, "shield")
+    out.append(icon(glyph, ICON_X, ICON_Y, INK, sw=1.3, scale=0.95))
     out.append(status_glyph("cloud", ICON_X - 34, ICON_Y, INK))
     out.append(status_glyph("wifi", ICON_X + 34, ICON_Y, INK))
     out.append(status_glyph("battery", ICON_X + 66, ICON_Y, INK))
