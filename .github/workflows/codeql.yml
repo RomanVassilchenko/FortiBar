@@ -54,11 +54,11 @@ jobs:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
 
-      - name: Build OpenFortiMac
+      - name: Build FortiBar
         run: |
           xcodebuild clean build \
-            -project OpenFortiMac.xcodeproj \
-            -scheme OpenFortiMac \
+            -project FortiBar.xcodeproj \
+            -scheme FortiBar \
             -configuration Debug \
             -destination 'generic/platform=macOS' \
             CODE_SIGNING_ALLOWED=NO \

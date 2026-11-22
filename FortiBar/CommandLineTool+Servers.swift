@@ -1,6 +1,6 @@
 import Foundation
 
-/// Server management and settings for the `openfortimac` CLI: add, edit, remove, show,
+/// Server management and settings for the `fortibar` CLI: add, edit, remove, show,
 /// settings, permission. Writes config.json and the Keychain directly (same signed
 /// executable as the app), then asks a running app to reload.
 extension CommandLineTool {
@@ -62,7 +62,7 @@ extension CommandLineTool {
         guard let options = parseOptions(args) else { return 2 }
         guard let name = (options.value("--name") ?? options.positional.first)?.trimmingCharacters(in: .whitespaces),
               !name.isEmpty else {
-            return usage("add needs a name: openfortimac add <name> --host <host> --user <user>")
+            return usage("add needs a name: fortibar add <name> --host <host> --user <user>")
         }
         guard let host = options.value("--host"), let user = options.value("--user") else {
             return usage("add needs --host and --user")
@@ -100,7 +100,7 @@ extension CommandLineTool {
         servers.append(server)
         ConfigManager.shared.saveServers(servers)
         configChanged()
-        print("Added \(server.name)" + (KeychainHelper.read(for: server.id) == nil ? " (no password yet: openfortimac edit \"\(server.name)\" --password)" : ""))
+        print("Added \(server.name)" + (KeychainHelper.read(for: server.id) == nil ? " (no password yet: fortibar edit \"\(server.name)\" --password)" : ""))
         warnIfRoutesNeedPermission(server)
         return 0
     }
@@ -110,7 +110,7 @@ extension CommandLineTool {
     static func edit(_ args: [String]) -> Int32 {
         guard let options = parseOptions(args) else { return 2 }
         guard let query = options.positional.first else {
-            return usage("edit needs a server: openfortimac edit <server> [options]")
+            return usage("edit needs a server: fortibar edit <server> [options]")
         }
         guard let old = resolve(query) else { return 2 }
 
@@ -189,7 +189,7 @@ extension CommandLineTool {
     static func remove(_ args: [String]) -> Int32 {
         guard let options = parseOptions(args) else { return 2 }
         guard let query = options.positional.first else {
-            return usage("remove needs a server: openfortimac remove <server> [--yes]")
+            return usage("remove needs a server: fortibar remove <server> [--yes]")
         }
         guard let server = resolve(query) else { return 2 }
 
@@ -326,10 +326,10 @@ extension CommandLineTool {
         let text: String
         switch status {
         case .managed: text = "ok (\(SudoersManager.rulePath))"
-        case .external: text = "ok (a rule not managed by OpenFortiMac)"
-        case .routesMissing: text = "static routes not allowed: run openfortimac permission update"
-        case .outdated: text = "rule points to another openfortivpn: run openfortimac permission update"
-        case .missing: text = "not set up: run openfortimac permission install"
+        case .external: text = "ok (a rule not managed by FortiBar)"
+        case .routesMissing: text = "static routes not allowed: run fortibar permission update"
+        case .outdated: text = "rule points to another openfortivpn: run fortibar permission update"
+        case .missing: text = "not set up: run fortibar permission install"
         case .binaryNotFound: text = "openfortivpn not found"
         }
         print("Permission: \(text)")
@@ -382,7 +382,7 @@ extension CommandLineTool {
 
     static func warnIfRoutesNeedPermission(_ server: VPNServer) {
         guard !server.validatedStaticRoutes.isEmpty, !SudoersManager.shared.routesAllowed() else { return }
-        print("Note: static routes need an updated sudo rule: openfortimac permission update")
+        print("Note: static routes need an updated sudo rule: fortibar permission update")
     }
 
     /// Tells a running app to re-read config.json, so it does not overwrite these changes.

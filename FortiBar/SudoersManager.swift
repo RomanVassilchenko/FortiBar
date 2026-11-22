@@ -1,11 +1,11 @@
 import Foundation
 
 enum SudoersStatus: Equatable {
-    /// Rule installed by OpenFortiMac and matching the current openfortivpn path
+    /// Rule installed by FortiBar and matching the current openfortivpn path
     case managed
-    /// Passwordless sudo works, but through a rule OpenFortiMac did not install
+    /// Passwordless sudo works, but through a rule FortiBar did not install
     case external
-    /// Rule installed by OpenFortiMac, but for a different openfortivpn path
+    /// Rule installed by FortiBar, but for a different openfortivpn path
     case outdated
     /// openfortivpn is allowed, but a server uses static routes and /sbin/route is not
     case routesMissing
@@ -39,7 +39,7 @@ final class SudoersManager {
     static let shared = SudoersManager()
 
     /// Files in sudoers.d whose name contains a dot are ignored by sudo, so no extension here.
-    static let rulePath = "/etc/sudoers.d/openfortimac"
+    static let rulePath = "/etc/sudoers.d/fortibar"
 
     private init() {}
 
@@ -118,12 +118,12 @@ final class SudoersManager {
         r=$?; /bin/rm -f "$t"; exit $r
         """
 
-        try runAsAdministrator(script, prompt: "OpenFortiMac wants to allow openfortivpn to start the VPN tunnel without asking for your password.")
+        try runAsAdministrator(script, prompt: "FortiBar wants to allow openfortivpn to start the VPN tunnel without asking for your password.")
     }
 
     /// Blocking: shows the macOS administrator password dialog.
     func remove() throws {
-        try runAsAdministrator("/bin/rm -f \(Self.rulePath)", prompt: "OpenFortiMac wants to remove its openfortivpn sudo rule.")
+        try runAsAdministrator("/bin/rm -f \(Self.rulePath)", prompt: "FortiBar wants to remove its openfortivpn sudo rule.")
     }
 
     // MARK: - Helpers

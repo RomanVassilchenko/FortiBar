@@ -180,7 +180,7 @@ struct MenuPanelView: View {
 
             Spacer()
 
-            FooterButton(symbol: "power", help: "Quit OpenFortiMac") {
+            FooterButton(symbol: "power", help: "Quit FortiBar") {
                 model.quit()
             }
             .keyboardShortcut("q", modifiers: .command)

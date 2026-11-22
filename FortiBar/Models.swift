@@ -87,7 +87,7 @@ struct VPNServer: Codable, Identifiable, Hashable {
     /// Static routes (CIDR) installed through this tunnel's ppp interface
     /// when it comes up, and removed when it goes down.
     let staticRoutes: [String]
-    /// Connect automatically when OpenFortiMac starts.
+    /// Connect automatically when FortiBar starts.
     let autoConnect: Bool
     /// Reconnect when the tunnel drops (network change, gateway timeout, sleep)
     /// until the user disconnects.

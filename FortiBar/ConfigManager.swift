@@ -1,8 +1,8 @@
 import Foundation
 import os
 
-/// Unified log, not stdout: the executable doubles as the `openfortimac` CLI.
-private let log = Logger(subsystem: "rempairamore.OpenFortiMac", category: "config")
+/// Unified log, not stdout: the executable doubles as the `fortibar` CLI.
+private let log = Logger(subsystem: "com.romanvassilchenko.FortiBar", category: "config")
 
 class ConfigManager {
     static let shared = ConfigManager()
@@ -11,7 +11,7 @@ class ConfigManager {
     
     static var configPath: URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let appFolder = appSupport.appendingPathComponent("OpenFortiMac")
+        let appFolder = appSupport.appendingPathComponent("FortiBar")
         return appFolder.appendingPathComponent("config.json")
     }
     

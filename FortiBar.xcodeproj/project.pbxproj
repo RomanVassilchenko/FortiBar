@@ -7,13 +7,13 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		ACCE1C5C2F391027005645A5 /* OpenFortiMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenFortiMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		ACCE1C5C2F391027005645A5 /* FortiBar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FortiBar.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		ACCE1C5E2F391027005645A5 /* OpenFortiMac */ = {
+		ACCE1C5E2F391027005645A5 /* FortiBar */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = OpenFortiMac;
+			path = FortiBar;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -32,7 +32,7 @@
 		ACCE1C532F391027005645A5 = {
 			isa = PBXGroup;
 			children = (
-				ACCE1C5E2F391027005645A5 /* OpenFortiMac */,
+				ACCE1C5E2F391027005645A5 /* FortiBar */,
 				ACCE1C5D2F391027005645A5 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -40,7 +40,7 @@
 		ACCE1C5D2F391027005645A5 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				ACCE1C5C2F391027005645A5 /* OpenFortiMac.app */,
+				ACCE1C5C2F391027005645A5 /* FortiBar.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -48,9 +48,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		ACCE1C5B2F391027005645A5 /* OpenFortiMac */ = {
+		ACCE1C5B2F391027005645A5 /* FortiBar */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = ACCE1C672F391028005645A5 /* Build configuration list for PBXNativeTarget "OpenFortiMac" */;
+			buildConfigurationList = ACCE1C672F391028005645A5 /* Build configuration list for PBXNativeTarget "FortiBar" */;
 			buildPhases = (
 				ACCE1C582F391027005645A5 /* Sources */,
 				ACCE1C592F391027005645A5 /* Frameworks */,
@@ -61,13 +61,13 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				ACCE1C5E2F391027005645A5 /* OpenFortiMac */,
+				ACCE1C5E2F391027005645A5 /* FortiBar */,
 			);
-			name = OpenFortiMac;
+			name = FortiBar;
 			packageProductDependencies = (
 			);
-			productName = OpenFortiMac;
-			productReference = ACCE1C5C2F391027005645A5 /* OpenFortiMac.app */;
+			productName = FortiBar;
+			productReference = ACCE1C5C2F391027005645A5 /* FortiBar.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -86,7 +86,7 @@
 					};
 				};
 			};
-			buildConfigurationList = ACCE1C572F391027005645A5 /* Build configuration list for PBXProject "OpenFortiMac" */;
+			buildConfigurationList = ACCE1C572F391027005645A5 /* Build configuration list for PBXProject "FortiBar" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -100,7 +100,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				ACCE1C5B2F391027005645A5 /* OpenFortiMac */,
+				ACCE1C5B2F391027005645A5 /* FortiBar */,
 			);
 		};
 /* End PBXProject section */
@@ -161,7 +161,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = A5RZX3XLLF;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -225,7 +225,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = A5RZX3XLLF;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -262,8 +262,8 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = OpenFortiMac/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = OpenFortiMac;
+				INFOPLIST_FILE = FortiBar/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = FortiBar;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSUIElement = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -272,7 +272,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MARKETING_VERSION = 1.3.2;
-				PRODUCT_BUNDLE_IDENTIFIER = rempairamore.OpenFortiMac;
+				PRODUCT_BUNDLE_IDENTIFIER = com.romanvassilchenko.FortiBar;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -301,8 +301,8 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = OpenFortiMac/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = OpenFortiMac;
+				INFOPLIST_FILE = FortiBar/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = FortiBar;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSUIElement = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -311,7 +311,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MARKETING_VERSION = 1.3.2;
-				PRODUCT_BUNDLE_IDENTIFIER = rempairamore.OpenFortiMac;
+				PRODUCT_BUNDLE_IDENTIFIER = com.romanvassilchenko.FortiBar;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -326,7 +326,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		ACCE1C572F391027005645A5 /* Build configuration list for PBXProject "OpenFortiMac" */ = {
+		ACCE1C572F391027005645A5 /* Build configuration list for PBXProject "FortiBar" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				ACCE1C652F391028005645A5 /* Debug */,
@@ -335,7 +335,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		ACCE1C672F391028005645A5 /* Build configuration list for PBXNativeTarget "OpenFortiMac" */ = {
+		ACCE1C672F391028005645A5 /* Build configuration list for PBXNativeTarget "FortiBar" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				ACCE1C682F391028005645A5 /* Debug */,

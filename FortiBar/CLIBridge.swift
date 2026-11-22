@@ -1,13 +1,13 @@
 import Foundation
 import Combine
 
-/// Shared between the app and the `openfortimac` command line tool.
+/// Shared between the app and the `fortibar` command line tool.
 ///
 /// The running app publishes its tunnels to `state.json` and listens for commands
 /// as distributed notifications, so the CLI never touches the Keychain or root.
 enum CLIProtocol {
-    static let commandNotification = Notification.Name("com.openfortimac.cli.command")
-    static let bundleIdentifier = "rempairamore.OpenFortiMac"
+    static let commandNotification = Notification.Name("com.romanvassilchenko.FortiBar.cli.command")
+    static let bundleIdentifier = "com.romanvassilchenko.FortiBar"
 
     static var stateURL: URL {
         ConfigManager.configPath.deletingLastPathComponent().appendingPathComponent("state.json")
@@ -15,7 +15,7 @@ enum CLIProtocol {
 
     static var logURL: URL {
         FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Logs/OpenFortiMac/openfortimac.log")
+            .appendingPathComponent("Library/Logs/FortiBar/fortibar.log")
     }
 
     enum Action: String {
@@ -161,11 +161,11 @@ final class CLIBridge {
     }
 }
 
-/// Appends log lines to ~/Library/Logs/OpenFortiMac/openfortimac.log for `openfortimac logs`.
+/// Appends log lines to ~/Library/Logs/FortiBar/fortibar.log for `fortibar logs`.
 final class LogFile {
     static let shared = LogFile()
 
-    private let queue = DispatchQueue(label: "openfortimac.logfile")
+    private let queue = DispatchQueue(label: "fortibar.logfile")
     private let url = CLIProtocol.logURL
     private let maxSize: UInt64 = 2_000_000
 

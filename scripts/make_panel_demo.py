@@ -1,4 +1,4 @@
-"""Animated demo of the OpenFortiMac menu bar panel, with example data.
+"""Animated demo of the FortiBar menu bar panel, with example data.
 
 Draws every frame as SVG (same layout as MenuPanelView.swift: 320pt wide, 12pt padding,
 40pt status circle), rasterizes them at 2x with Quick Look and assembles the GIF with ffmpeg.
@@ -8,7 +8,7 @@ Requires macOS (qlmanage) and ffmpeg (brew install ffmpeg).
 
     python3 scripts/make_panel_demo.py [output.gif]
 
-Default output: docs/assets/openfortimac-panel-demo.gif (used by the README and the site).
+Default output: docs/assets/fortibar-panel-demo.gif (used by the README and the site).
 """
 import math
 import shutil
@@ -311,7 +311,7 @@ def render(frames, output):
 
 if __name__ == "__main__":
     repo = Path(__file__).resolve().parent.parent
-    output = Path(sys.argv[1]) if len(sys.argv) > 1 else repo / "docs/assets/openfortimac-panel-demo.gif"
+    output = Path(sys.argv[1]) if len(sys.argv) > 1 else repo / "docs/assets/fortibar-panel-demo.gif"
     frames = build_frames()
     render(frames, output)
     print(f"{output}: {len(frames)} frames, {sum(d for _, d in frames):.1f}s, {2 * CANVAS_W}x{2 * CANVAS_H}")

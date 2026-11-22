@@ -142,7 +142,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
-        let quitItem = NSMenuItem(title: "Quit OpenFortiMac", action: #selector(quitApp), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "Quit FortiBar", action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
 
@@ -176,7 +176,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         )
         button.image = image
         button.toolTip = vpnManager.tunnels.isEmpty
-            ? "OpenFortiMac: not connected"
+            ? "FortiBar: not connected"
             : vpnManager.tunnels.map { "\($0.serverName): \($0.isConnected ? "connected" : "in progress")" }.joined(separator: "\n")
     }
 
@@ -212,7 +212,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let hostingController = NSHostingController(rootView: settingsView)
 
         let window = NSWindow(contentViewController: hostingController)
-        window.title = "OpenFortiMac Settings"
+        window.title = "FortiBar Settings"
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.center()
         window.setFrameAutosaveName("SettingsWindow")

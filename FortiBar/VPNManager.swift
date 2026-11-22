@@ -110,7 +110,7 @@ class VPNManager: ObservableObject {
                 self?.networkChanged(available: available)
             }
         }
-        pathMonitor.start(queue: DispatchQueue(label: "openfortimac.network"))
+        pathMonitor.start(queue: DispatchQueue(label: "fortibar.network"))
     }
 
     // MARK: - Computed state

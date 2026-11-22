@@ -219,11 +219,11 @@ struct SettingsView: View {
             }
             
             Section("How it works") {
-                Text("openfortivpn needs root to create the VPN tunnel. OpenFortiMac adds a sudo rule so it can start without asking for your password every time.")
+                Text("openfortivpn needs root to create the VPN tunnel. FortiBar adds a sudo rule so it can start without asking for your password every time.")
                     .font(.callout)
                 Text("Servers with static routes also need /sbin/route, limited to routes through ppp interfaces.")
                     .font(.callout)
-                Text("Any app running as your user gains the same ability. Remove the rule if you stop using OpenFortiMac.")
+                Text("Any app running as your user gains the same ability. Remove the rule if you stop using FortiBar.")
                     .font(.callout)
                     .foregroundColor(.secondary)
             }
@@ -304,7 +304,7 @@ struct SettingsView: View {
         case .managed, .outdated:
             return SudoersManager.rulePath
         case .external:
-            return "Not managed by OpenFortiMac (e.g. /etc/sudoers.d/openfortivpn)"
+            return "Not managed by FortiBar (e.g. /etc/sudoers.d/openfortivpn)"
         case .routesMissing:
             return "A server adds static routes: allow /sbin/route for ppp interfaces"
         case .missing:

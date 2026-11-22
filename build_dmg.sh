@@ -1,16 +1,16 @@
 #!/bin/bash
-# Build script for OpenFortiMac
+# Build script for FortiBar
 # Creates .app bundle and .dmg installer
 
 set -e
 
-APP_NAME="OpenFortiMac"
+APP_NAME="FortiBar"
 BUILD_DIR="build"
 DMG_DIR="dmg_contents"
 
 # Stable self-signed certificate: keeps the app's identity (and its Keychain access)
 # the same across updates. Without it the build falls back to an ad-hoc signature.
-SIGN_NAME="OpenFortiMac Self-Signed"
+SIGN_NAME="FortiBar Self-Signed"
 
 # Version comes from MARKETING_VERSION in the Xcode project
 VERSION=$(xcodebuild -project "$APP_NAME.xcodeproj" \
@@ -97,7 +97,7 @@ SHA256=$(shasum -a 256 "$DMG_NAME" | awk '{print $1}')
 echo ""
 echo "✅ Done! Created: $DMG_NAME"
 echo ""
-echo "Homebrew cask values (homebrew-tap/Casks/openfortimac.rb):"
+echo "Homebrew cask values (for a tap cask named fortibar):"
 echo "  version \"$VERSION\""
 echo "  sha256 \"$SHA256\""
 
