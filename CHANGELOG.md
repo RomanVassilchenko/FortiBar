@@ -14,14 +14,15 @@
 - Optional monochrome menu bar icon (Settings → General → Menu bar icon): a template shield that shows the number of connected tunnels; the classic lock stays the default
 
 ### Changed
-- Menu bar panel restyled with Liquid Glass on macOS 26 (glass status puck, buttons and footer; a material fallback before macOS 26). The settings window follows the system style
+- Minimal macOS-style interface: a flat menu bar panel on the system's Liquid Glass popover (glass status puck and buttons on macOS 26, a material before), toolbar-style tabs in Settings, a new app icon
 - The project is now **FortiBar**, a fork of OpenFortiMac by rempairamore (GPL-3.0). New bundle identifier `com.romanvassilchenko.FortiBar`, new CLI name `fortibar`, new sudo rule `/etc/sudoers.d/fortibar`, new Keychain service, config in `~/Library/Application Support/FortiBar`
 - First launch migrates data from OpenFortiMac: servers and settings, logs, and Keychain passwords (copied, then deleted from the old service; macOS may ask for access once: choose **Always Allow**). **Settings → Permission → Update…** replaces the old sudo rule with the new one. Launch at login must be turned on again in FortiBar
-- Prebuilt releases, the Homebrew tap and the build provenance of the original project do not apply to FortiBar; the release workflow is kept disabled until signing secrets exist
+- Releases are signed with FortiBar's own self-signed certificate ("FortiBar Self-Signed"); the Homebrew tap of the original project does not apply to FortiBar
 - Quitting disconnects all tunnels first, whatever the way of quitting (menu, `brew uninstall`, logout, SIGTERM)
 - The temporary openfortivpn config (with the password) is deleted as soon as the tunnel is up
 
 ### Fixed
+- ⌘, opened an empty settings window
 - Permission check: `sudo -l` also lists commands that still need a password for administrators; the check now runs `openfortivpn --version` through `sudo -n`
 
 ## v1.3.2
