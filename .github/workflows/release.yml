@@ -1,11 +1,8 @@
 name: "Release"
 
-# DISABLED: rename this file to release.yml to enable it. Before that, set up:
-#   - secret SIGNING_CERT_P12 (base64 of a self-signed code signing certificate's .p12)
-#     and SIGNING_CERT_PASSWORD; the build is signed with it to keep a stable identity
-#   - repository variable EXPECTED_CERT_SHA1 (lowercase SHA-1 of that certificate,
-#     no colons): the build is checked against it
-#   - secret VIRUSTOTAL_API_KEY (optional: without it the scan is skipped)
+# Needs: secrets SIGNING_CERT_P12 and SIGNING_CERT_PASSWORD (base64 .p12 of the
+# "FortiBar Self-Signed" certificate), repository variable EXPECTED_CERT_SHA1 (its SHA-1,
+# lowercase, no colons) and, optionally, secret VIRUSTOTAL_API_KEY (the scan is skipped without it).
 #
 # A new MARKETING_VERSION merged to main (or a v* tag) builds, attests, scans and
 # publishes a GitHub release.

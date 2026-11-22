@@ -21,9 +21,14 @@ Passwords are stored in the macOS Keychain.
 
 ## Installation
 
+### Download
+
+1. Install openfortivpn: `brew install openfortivpn`
+2. Download the latest `.dmg` from [Releases](../../releases), open it and drag **FortiBar** to your Applications folder.
+
 ### Build yourself
 
-FortiBar has no prebuilt releases yet. To build from source (Xcode 26 or later required):
+Xcode 26 or later is required:
 
 ```bash
 brew install openfortivpn
@@ -33,7 +38,7 @@ chmod +x build_dmg.sh
 ./build_dmg.sh
 ```
 
-This produces `FortiBar_vX.Y.Z.dmg`: open it and drag **FortiBar** to your Applications folder.
+This produces `FortiBar_vX.Y.Z.dmg`. Run the unit tests with `xcodebuild test -project FortiBar.xcodeproj -scheme FortiBar -destination 'platform=macOS'`.
 
 Without the `FortiBar Self-Signed` certificate in your keychain the app is signed ad hoc, and macOS asks for Keychain access again after every rebuild. Create a self-signed code signing certificate with that name (Keychain Access → Certificate Assistant) to keep the app's identity stable across updates.
 
@@ -214,7 +219,11 @@ Then delete `/Applications/FortiBar.app`.
 
 ## Releasing
 
-Releases are currently built by hand with `./build_dmg.sh`. The GitHub Actions release workflow is kept disabled as [`.github/workflows/release.yml.disabled`](.github/workflows/release.yml.disabled): it needs signing secrets and a Homebrew tap that do not exist yet (see the comments at the top of the file). To enable it, set those up and rename the file to `release.yml`.
+The [Release workflow](.github/workflows/release.yml) builds a universal DMG signed with the "FortiBar Self-Signed" certificate. When `main` gets a `MARKETING_VERSION` that has no tag yet, it attests the build provenance, scans the DMG on VirusTotal and publishes the GitHub release (creating the `vX.Y.Z` tag), using the matching `CHANGELOG.md` section as the notes. Pull requests only build the DMG and upload it as an artifact. A tag with a suffix (for example `v1.4.0-rc.1`) publishes a pre-release.
+
+Repository settings it uses: secrets `SIGNING_CERT_P12`, `SIGNING_CERT_PASSWORD`, optionally `VIRUSTOTAL_API_KEY`, and the variable `EXPECTED_CERT_SHA1`. Keep a backup of the `.p12`: a new certificate changes the app's identity and macOS asks for Keychain access again.
+
+Local builds use the certificate when it is in your keychain and fall back to an ad-hoc signature otherwise. `./build_dmg.sh` is what the workflow runs.
 
 Version bumps go in `MARKETING_VERSION` in Xcode plus a `## vX.Y.Z` section in `CHANGELOG.md`.
 

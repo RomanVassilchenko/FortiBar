@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.4.0
 
 ### Added
 - The gateway certificate is trusted on the first connection: when it cannot be verified, its digest is pinned in the server profile and the connection retried. A pinned certificate that changes is a certificate error. (Before, the `--trusted-cert=any` fallback made such servers fail until the digest was pasted by hand)
