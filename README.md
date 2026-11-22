@@ -28,7 +28,7 @@ brew trust romanvassilchenko/tap
 brew install --cask romanvassilchenko/tap/fortibar
 ```
 
-This installs FortiBar and [openfortivpn](https://formulae.brew.sh/formula/openfortivpn) from the [romanvassilchenko/homebrew-tap](https://github.com/RomanVassilchenko/homebrew-tap) tap and links the `fortibar` command. Homebrew asks you to trust third-party taps once, which is what the first line does. Update with `brew upgrade --cask fortibar`: it quits FortiBar (closing its tunnels), so start it again afterwards.
+This installs FortiBar and [openfortivpn](https://formulae.brew.sh/formula/openfortivpn) from the [romanvassilchenko/homebrew-tap](https://github.com/RomanVassilchenko/homebrew-tap) tap and links the `fortibar` command. Homebrew asks you to trust third-party taps once, which is what the first line does. Update with `brew upgrade --cask fortibar`: Homebrew quits FortiBar (closing its tunnels) and opens the new version; servers with **Connect at launch** come back on their own.
 
 ### Download
 
@@ -180,8 +180,8 @@ You do not need to fill in `trusted_cert`. When a gateway's certificate cannot b
 With Homebrew:
 
 ```bash
-brew uninstall --cask fortibar          # also removes /etc/sudoers.d/fortibar (asks for your password)
-brew uninstall --cask --zap fortibar    # also deletes settings and logs
+brew uninstall --cask fortibar          # keeps the sudo rule, settings and logs
+brew uninstall --cask --zap fortibar    # also deletes /etc/sudoers.d/fortibar (asks for your password), settings and logs
 ```
 
 Manually:
