@@ -1,4 +1,17 @@
-# OpenFortiMac
+# Burrow
+![macOS 13+](https://img.shields.io/badge/macOS-13%2B-blue)
+![Swift](https://img.shields.io/badge/Swift-5-orange)
+![License: GPL v3](https://img.shields.io/badge/license-GPLv3-green)
+
+> **Burrow** is a macOS menu bar manager for several simultaneous VPN tunnels (via [openfortivpn](https://github.com/adrienverge/openfortivpn)), with auto-reconnect and a CLI.
+>
+> It is inspired by and forked from [OpenFortiMac](https://github.com/rempairamore/OpenFortiMac) by [@rempairamore](https://github.com/rempairamore), and is released under the same GPL-3.0 license. Many thanks to the original author. This project is not affiliated with Fortinet.
+>
+> **Status:** rebranding in progress. Parts of the code, docs and build scripts below still use the original `OpenFortiMac` name.
+
+---
+
+# OpenFortiMac (original README)
 ![macOS 13+](https://img.shields.io/badge/macOS-13%2B-blue)
 ![Swift](https://img.shields.io/badge/Swift-5-orange)
 
