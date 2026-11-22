@@ -327,13 +327,14 @@ extension CommandLineTool {
         switch status {
         case .managed: text = "ok (\(SudoersManager.rulePath))"
         case .external: text = "ok (a rule not managed by FortiBar)"
+        case .legacyRule: text = "ok, but under the old OpenFortiMac rule name: run fortibar permission update"
         case .routesMissing: text = "static routes not allowed: run fortibar permission update"
         case .outdated: text = "rule points to another openfortivpn: run fortibar permission update"
         case .missing: text = "not set up: run fortibar permission install"
         case .binaryNotFound: text = "openfortivpn not found"
         }
         print("Permission: \(text)")
-        return [.managed, .external].contains(status) ? 0 : 1
+        return [.managed, .external, .legacyRule].contains(status) ? 0 : 1
     }
 
     // MARK: - Helpers

@@ -247,6 +247,14 @@ struct SettingsView: View {
                     .keyboardShortcut(.defaultAction)
                     .disabled(busy)
             )
+        case .legacyRule:
+            return AnyView(HStack {
+                Button("Remove") { viewModel.removeSudoers() }
+                    .disabled(busy)
+                Button("Update…") { viewModel.setUpSudoers() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(busy)
+            })
         case .outdated:
             return AnyView(HStack {
                 Button("Remove") { viewModel.removeSudoers() }
@@ -272,7 +280,7 @@ struct SettingsView: View {
     private var sudoersIcon: String {
         switch viewModel.sudoersStatus {
         case .managed, .external: return "checkmark.shield.fill"
-        case .outdated, .missing, .routesMissing: return "exclamationmark.shield.fill"
+        case .legacyRule, .outdated, .missing, .routesMissing: return "exclamationmark.shield.fill"
         case .binaryNotFound: return "xmark.shield.fill"
         case .none: return "shield"
         }
@@ -281,7 +289,7 @@ struct SettingsView: View {
     private var sudoersTint: Color {
         switch viewModel.sudoersStatus {
         case .managed, .external: return .green
-        case .outdated, .missing, .routesMissing: return .orange
+        case .legacyRule, .outdated, .missing, .routesMissing: return .orange
         case .binaryNotFound: return .red
         case .none: return .secondary
         }
@@ -292,6 +300,7 @@ struct SettingsView: View {
         case .none: return "Checking…"
         case .managed: return "openfortivpn can start without a password"
         case .external: return "Allowed by a rule you added manually"
+        case .legacyRule: return "The rule uses the old OpenFortiMac name"
         case .outdated: return "The rule points to a different openfortivpn"
         case .missing: return "Not set up: connections will fail"
         case .routesMissing: return "Static routes need an updated rule"
@@ -303,6 +312,8 @@ struct SettingsView: View {
         switch viewModel.sudoersStatus {
         case .managed, .outdated:
             return SudoersManager.rulePath
+        case .legacyRule:
+            return "\(LegacyMigration.legacySudoersRulePath) → \(SudoersManager.rulePath)"
         case .external:
             return "Not managed by FortiBar (e.g. /etc/sudoers.d/openfortivpn)"
         case .routesMissing:

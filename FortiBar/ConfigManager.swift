@@ -16,6 +16,8 @@ class ConfigManager {
     }
     
     private init() {
+        // Settings and logs written under the previous app name
+        LegacyMigration.migrateFiles()
         config = ConfigManager.loadConfig(from: ConfigManager.configPath)
     }
     

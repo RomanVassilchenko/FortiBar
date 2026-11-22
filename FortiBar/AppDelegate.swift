@@ -15,6 +15,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
+        // Passwords saved under the previous app name; before anything reads the Keychain
+        LegacyMigration.migrateKeychain()
+
         // Create default config if first launch
         let isFirstLaunch = !FileManager.default.fileExists(atPath: ConfigManager.configPath.path)
         configManager.createDefaultConfig()

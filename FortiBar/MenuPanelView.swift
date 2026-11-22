@@ -90,6 +90,12 @@ struct MenuPanelView: View {
                 detail: "openfortivpn needs it to start the tunnel.",
                 action: "Set up"
             ) { model.openSettings(.permission, nil) }
+        case .legacyRule:
+            return SetupBanner(
+                title: "Permission rule needs a one-time update",
+                detail: "FortiBar renamed its sudo rule.",
+                action: "Update"
+            ) { model.openSettings(.permission, nil) }
         case .routesMissing:
             return SetupBanner(
                 title: "Static routes need permission",
