@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import FortiBar
 
@@ -68,5 +69,88 @@ struct SudoersAndRoutesTests {
         #expect(!VPNServer.isValidCIDR("10.20.30.0/33"))
         #expect(!VPNServer.isValidCIDR("300.1.1.1/8"))
         #expect(!VPNServer.isValidCIDR("10.0.0.0/8; rm -rf /"))
+    }
+}
+
+struct MigrationTests {
+    private func makeTempRoot() throws -> URL {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("fortibar-test-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        return root
+    }
+
+    @Test func configFolderMovesAndOldOneIsRemoved() throws {
+        let root = try makeTempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let old = root.appendingPathComponent("OldApp"), new = root.appendingPathComponent("NewApp")
+        try FileManager.default.createDirectory(at: old, withIntermediateDirectories: true)
+        try Data("{\"servers\":[]}".utf8).write(to: old.appendingPathComponent("config.json"))
+        try Data("runtime".utf8).write(to: old.appendingPathComponent("state.json"))
+        try Data("backup".utf8).write(to: old.appendingPathComponent("config.json.bak"))
+
+        LegacyMigration.migrateConfigFolder(from: old, to: new)
+
+        let fm = FileManager.default
+        #expect(fm.fileExists(atPath: new.appendingPathComponent("config.json").path))
+        #expect(fm.fileExists(atPath: new.appendingPathComponent("config.json.bak").path))
+        #expect(!fm.fileExists(atPath: new.appendingPathComponent("state.json").path))
+        #expect(!fm.fileExists(atPath: old.path))
+    }
+
+    @Test func existingNewConfigIsNeverOverwritten() throws {
+        let root = try makeTempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let old = root.appendingPathComponent("OldApp"), new = root.appendingPathComponent("NewApp")
+        for folder in [old, new] {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        }
+        try Data("old".utf8).write(to: old.appendingPathComponent("config.json"))
+        try Data("new".utf8).write(to: new.appendingPathComponent("config.json"))
+
+        LegacyMigration.migrateConfigFolder(from: old, to: new)
+
+        #expect(try String(contentsOf: new.appendingPathComponent("config.json"), encoding: .utf8) == "new")
+        #expect(FileManager.default.fileExists(atPath: old.appendingPathComponent("config.json").path))
+    }
+
+    @Test func logsMoveToTheNewName() throws {
+        let root = try makeTempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let old = root.appendingPathComponent("OldLogs")
+        let newLog = root.appendingPathComponent("NewLogs/new.log")
+        try FileManager.default.createDirectory(at: old, withIntermediateDirectories: true)
+        try Data("line".utf8).write(to: old.appendingPathComponent("openfortimac.log"))
+
+        LegacyMigration.migrateLogs(from: old, to: newLog)
+
+        #expect(try String(contentsOf: newLog, encoding: .utf8) == "line")
+        #expect(!FileManager.default.fileExists(atPath: old.path))
+    }
+}
+
+import Security
+
+struct KeychainMigrationTests {
+    /// Uses a throw-away account name in the real Keychain; the real saved passwords are not touched.
+    @Test func passwordMovesToTheNewService() throws {
+        let account = "fortibar-test-\(UUID().uuidString)"
+        let legacy: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.openfortimac.vpn",
+            kSecAttrAccount as String: account
+        ]
+        var add = legacy
+        add[kSecValueData as String] = Data("secret".utf8)
+        defer {
+            SecItemDelete(legacy as CFDictionary)
+            KeychainHelper.delete(for: account)
+        }
+        // No usable Keychain (e.g. a locked CI session): nothing to test
+        guard SecItemAdd(add as CFDictionary, nil) == errSecSuccess else { return }
+
+        #expect(LegacyMigration.migratePassword(account: account))
+
+        #expect(KeychainHelper.read(for: account) == "secret")
+        #expect(SecItemCopyMatching(legacy as CFDictionary, nil) == errSecItemNotFound)
     }
 }

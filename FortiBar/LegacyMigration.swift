@@ -27,20 +27,24 @@ enum LegacyMigration {
     /// to their FortiBar locations. No Keychain access, so the CLI can run it too.
     static func migrateFiles() {
         guard !isRunningTests else { return }
-        migrateConfigFolder()
-        migrateLogs()
+        let newFolder = ConfigManager.configPath.deletingLastPathComponent()
+        migrateConfigFolder(
+            from: newFolder.deletingLastPathComponent().appendingPathComponent(legacyAppFolder),
+            to: newFolder)
+
+        let newLog = CLIProtocol.logURL
+        migrateLogs(
+            from: newLog.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent(legacyLogFolder),
+            to: newLog)
     }
 
-    private static func migrateConfigFolder() {
+    /// Copies the old folder's files (not the runtime state.json) into `newFolder`, then removes the old folder.
+    static func migrateConfigFolder(from oldFolder: URL, to newFolder: URL) {
         let fm = FileManager.default
-        let oldFolder = ConfigManager.configPath.deletingLastPathComponent()
-            .deletingLastPathComponent().appendingPathComponent(legacyAppFolder)
-        let newFolder = ConfigManager.configPath.deletingLastPathComponent()
-
         guard fm.fileExists(atPath: oldFolder.appendingPathComponent("config.json").path) else { return }
 
         // The new app already has its own settings (fresh start): leave the old ones alone
-        guard !fm.fileExists(atPath: ConfigManager.configPath.path) else { return }
+        guard !fm.fileExists(atPath: newFolder.appendingPathComponent("config.json").path) else { return }
 
         do {
             try fm.createDirectory(at: newFolder, withIntermediateDirectories: true)
@@ -58,13 +62,10 @@ enum LegacyMigration {
         }
     }
 
-    private static func migrateLogs() {
+    static func migrateLogs(from oldFolder: URL, to newLog: URL) {
         let fm = FileManager.default
-        let oldFolder = CLIProtocol.logURL.deletingLastPathComponent()
-            .deletingLastPathComponent().appendingPathComponent(legacyLogFolder)
         guard fm.fileExists(atPath: oldFolder.path) else { return }
 
-        let newLog = CLIProtocol.logURL
         do {
             try fm.createDirectory(at: newLog.deletingLastPathComponent(), withIntermediateDirectories: true)
             for suffix in ["", ".1"] {
@@ -119,7 +120,8 @@ enum LegacyMigration {
         if complete { markKeychainDone() }
     }
 
-    private static func migratePassword(account: String) -> Bool {
+    /// Moves one password to the new service. False when it could not be read, written or deleted.
+    static func migratePassword(account: String) -> Bool {
         let itemQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: legacyKeychainService,
