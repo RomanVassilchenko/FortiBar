@@ -203,7 +203,10 @@ jobs:
           retention-days: 14
 
       - name: Attest build provenance
+        id: attest
         if: env.RELEASE == 'true'
+        # A Sigstore outage must not block the release; the notes then omit the attestation
+        continue-on-error: true
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: ${{ steps.build.outputs.dmg }}
@@ -253,6 +256,7 @@ jobs:
           DMG: ${{ steps.build.outputs.dmg }}
           SHA256: ${{ steps.build.outputs.sha256 }}
           VT_LINK: ${{ steps.virustotal.outputs.link }}
+          ATTESTED: ${{ steps.attest.outcome == 'success' }}
         run: |
           RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           {
@@ -269,7 +273,9 @@ jobs:
             echo "Built by [GitHub Actions]($RUN_URL) from the tagged commit."
             echo
             echo "- SHA-256: \`$SHA256\`"
-            echo "- Build provenance: \`gh attestation verify $DMG -R $GITHUB_REPOSITORY\`"
+            if [ "$ATTESTED" = "true" ]; then
+              echo "- Build provenance: \`gh attestation verify $DMG -R $GITHUB_REPOSITORY\`"
+            fi
             if [ -n "$VT_LINK" ]; then
               echo "- VirusTotal: $VT_LINK"
             fi
