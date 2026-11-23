@@ -1,9 +1,11 @@
 <p align="center"><img src="docs/assets/icon.png" width="128" height="128" alt="FortiBar app icon: a white F with a green dot on a deep blue background"></p>
 
 <h1 align="center">FortiBar</h1>
-![macOS 13+](https://img.shields.io/badge/macOS-13%2B-blue)
-![Swift](https://img.shields.io/badge/Swift-5-orange)
-![License: GPL v3](https://img.shields.io/badge/license-GPLv3-green)
+<p align="center">
+  <img alt="macOS 13+" src="https://img.shields.io/badge/macOS-13%2B-blue">
+  <img alt="Swift" src="https://img.shields.io/badge/Swift-5-orange">
+  <img alt="License: GPL v3" src="https://img.shields.io/badge/license-GPLv3-green">
+</p>
 
 > **FortiBar** is a macOS menu bar FortiVPN client for several simultaneous tunnels (via [openfortivpn](https://github.com/adrienverge/openfortivpn)), with auto-reconnect and a CLI.
 >
