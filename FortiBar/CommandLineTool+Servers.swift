@@ -355,7 +355,7 @@ extension CommandLineTool {
     static func permission(_ args: [String]) -> Int32 {
         // A typo (`permission instal`) must not look like a successful status check
         if let sub = args.first, !["install", "update", "status"].contains(sub) || args.count > 1 {
-            return usage("permission takes install, update or nothing")
+            return usage("permission takes status, install, update or nothing")
         }
         let path = VPNManager.locateOpenfortivpn()
         if args.first == "install" || args.first == "update" {

@@ -441,7 +441,7 @@ enum CommandLineTool {
           edit <server> [server options] [--name <new name>]
           remove <server> [--yes]             also deletes the saved password
           settings [--allow-multiple on|off] [--openfortivpn-path <path>] [--json]
-          permission [install|update]         sudo rule for openfortivpn and static routes
+          permission [status|install|update]  sudo rule for openfortivpn and static routes
           version
 
         Server options:

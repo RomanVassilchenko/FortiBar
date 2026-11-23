@@ -129,7 +129,7 @@ fortibar settings --allow-multiple on
 fortibar permission update        # reinstall the sudo rule (admin dialog)
 ```
 
-`fortibar help` lists every option. Commands run through the app (started in the background if needed), which owns the tunnels, the Keychain and the sudo rule. The CLI talks to it over a Unix socket in `~/Library/Application Support/FortiBar` that only your user can open. Passwords are read with `--password` (prompt) or `--password-stdin`, never from arguments.
+`fortibar help` lists every option. `connect` and `disconnect` run through the app (started in the background if needed), which owns the tunnels; the CLI talks to it over a Unix socket in `~/Library/Application Support/FortiBar` that only your user can open. `add`, `edit`, `remove`, `settings` and `permission` change the settings file, the Keychain or the sudo rule themselves and then tell the running app to reload. Passwords are read with `--password` (prompt) or `--password-stdin`, never from arguments.
 
 Exit codes: `0` success, `1` the command failed (e.g. the tunnel did not come up), `2` usage error or unknown server, `3` FortiBar is not running or could not be started. `status` and `status --json` both exit `3` when the app is not running; `--json` still prints `{"running": false, "tunnels": []}`.
 
