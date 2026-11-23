@@ -286,15 +286,7 @@ struct SettingsView: View {
                     .keyboardShortcut(.defaultAction)
                     .disabled(busy)
             )
-        case .legacyRule:
-            return AnyView(HStack {
-                Button("Remove") { viewModel.removeSudoers() }
-                    .disabled(busy)
-                Button("Update…") { viewModel.setUpSudoers() }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(busy)
-            })
-        case .outdated:
+        case .legacyRule, .outdated:
             return AnyView(HStack {
                 Button("Remove") { viewModel.removeSudoers() }
                     .disabled(busy)

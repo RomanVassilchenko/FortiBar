@@ -6,9 +6,9 @@ import SwiftUI
 extension View {
     /// Liquid Glass in `shape`, or a thin material before macOS 26.
     @ViewBuilder
-    func glassSurface<S: Shape>(in shape: S, tint: Color? = nil, interactive: Bool = false) -> some View {
+    func glassSurface<S: Shape>(in shape: S, tint: Color? = nil) -> some View {
         if #available(macOS 26.0, *) {
-            self.glassEffect(.regular.tint(tint?.opacity(0.3)).interactive(interactive), in: shape)
+            self.glassEffect(.regular.tint(tint?.opacity(0.3)), in: shape)
         } else {
             self.background(.thinMaterial, in: shape)
                 .overlay { if let tint { shape.fill(tint.opacity(0.15)) } }
