@@ -100,10 +100,27 @@ screenshots, all captured in dark appearance) always sits on a near-black
 menu bar and the page never shows mismatched backgrounds.
 
 The app follows the same language: system materials (Liquid Glass on macOS 26),
-SF Symbols, the system accent, and a monochrome template shield in the menu bar
-that adapts to the menu bar appearance and shows the number of connected
-tunnels. Green means connected, orange means attention (no password,
+SF Symbols, the system accent, and a monochrome template of the app mark in the
+menu bar that adapts to the menu bar appearance and shows the number of
+connected tunnels. Green means connected, orange means attention (no password,
 reconnecting), red means error. No custom colours beyond that.
+
+## App icon
+
+- Mark: a monogram "F" of rounded bars. The top bar is the menu bar; the middle
+  bar ends in a round node, the "connected" signal. No shields, locks or globes.
+- Tile: the standard 824pt continuous-corner squircle on a 1024pt canvas, a
+  diagonal gradient from cool blue `#3566e0` (top left) through `#1b2e92` to
+  midnight navy `#0b1140`, with a faint top rim light.
+- Mark `#ffffff` easing to `#dbe3f7` with a soft shadow; node `#34d96a`, the
+  app's green for a live tunnel, with a soft glow. Nothing else gets colour.
+- Small sizes are drawn, not downscaled: 16 and 32 px use heavier, pixel-snapped
+  bars and drop the effects.
+- Menu bar: the same F as a template glyph; the node shows the state (ring
+  disconnected, half connecting, filled for one tunnel, a badge with the count
+  for several).
+- Source of truth: `scripts/make_app_icon.swift` renders the appiconset and the
+  site's `icon.png`, `favicon.png` and full-bleed `apple-touch-icon.png`.
 
 ## Colors
 
