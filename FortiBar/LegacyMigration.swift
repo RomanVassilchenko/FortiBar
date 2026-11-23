@@ -11,8 +11,6 @@ private let log = Logger(subsystem: "com.romanvassilchenko.FortiBar", category: 
 /// Nothing is deleted before its replacement has been written.
 enum LegacyMigration {
     private static let legacyAppFolder = "OpenFortiMac"
-    private static let legacyLogFolder = "OpenFortiMac"
-    private static let legacyLogName = "openfortimac.log"
     private static let legacyKeychainService = "com.openfortimac.vpn"
 
     /// Sudoers rule of earlier versions. SudoersManager replaces it with its own rule.
@@ -23,19 +21,14 @@ enum LegacyMigration {
 
     // MARK: - Files
 
-    /// Moves ~/Library/Application Support/OpenFortiMac (config.json) and the log files
-    /// to their FortiBar locations. No Keychain access, so the CLI can run it too.
+    /// Moves ~/Library/Application Support/OpenFortiMac (config.json) to its FortiBar location.
+    /// No Keychain access, so the CLI can run it too.
     static func migrateFiles() {
         guard !isRunningTests else { return }
         let newFolder = ConfigManager.configPath.deletingLastPathComponent()
         migrateConfigFolder(
             from: newFolder.deletingLastPathComponent().appendingPathComponent(legacyAppFolder),
             to: newFolder)
-
-        let newLog = CLIProtocol.logURL
-        migrateLogs(
-            from: newLog.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent(legacyLogFolder),
-            to: newLog)
     }
 
     /// Copies the old folder's files (not the runtime state.json) into `newFolder`, then removes the old folder.
@@ -63,30 +56,6 @@ enum LegacyMigration {
         } catch {
             // The copy is partial at worst and the old folder is still there: it is retried next launch
             log.error("Settings migration failed: \(String(describing: error), privacy: .public)")
-        }
-    }
-
-    static func migrateLogs(from oldFolder: URL, to newLog: URL) {
-        let fm = FileManager.default
-        guard fm.fileExists(atPath: oldFolder.path) else { return }
-
-        do {
-            try fm.createDirectory(at: newLog.deletingLastPathComponent(), withIntermediateDirectories: true)
-            for suffix in ["", ".1"] {
-                let old = oldFolder.appendingPathComponent(legacyLogName + suffix)
-                let new = URL(fileURLWithPath: newLog.path + suffix)
-                // A log already written under the new name wins: the old one stays where it is
-                if fm.fileExists(atPath: old.path), !fm.fileExists(atPath: new.path) {
-                    try fm.moveItem(at: old, to: new)
-                }
-            }
-            // Only an emptied folder goes: anything not moved (or not ours) is never deleted
-            let leftovers = try fm.contentsOfDirectory(atPath: oldFolder.path).filter { $0 != ".DS_Store" }
-            if leftovers.isEmpty {
-                try fm.removeItem(at: oldFolder)
-            }
-        } catch {
-            log.error("Log migration failed: \(String(describing: error), privacy: .public)")
         }
     }
 

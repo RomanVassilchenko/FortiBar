@@ -19,7 +19,6 @@
 - Settings no longer rewrite the config or re-register launch at login on open; the log Clear button stays cleared
 - CLI: unknown flags, bad `--timeout` / `-n` values and extra arguments are errors; saves are verified; `remove` no longer loses the Keychain password when saving fails
 - A second app instance waits for the first (for example during a Homebrew upgrade) instead of fighting over tunnels
-- Old logs are no longer deleted when they were not migrated
 
 ### Changed
 - `fortibar status --json` exits 3 when the app is not running, like `status`

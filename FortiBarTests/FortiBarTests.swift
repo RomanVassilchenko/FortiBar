@@ -238,39 +238,6 @@ struct MigrationTests {
         #expect(try String(contentsOf: new.appendingPathComponent("config.json"), encoding: .utf8) == "new")
         #expect(FileManager.default.fileExists(atPath: old.appendingPathComponent("config.json").path))
     }
-
-    @Test func logsMoveToTheNewName() throws {
-        let root = try makeTempRoot()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let old = root.appendingPathComponent("OldLogs")
-        let newLog = root.appendingPathComponent("NewLogs/new.log")
-        try FileManager.default.createDirectory(at: old, withIntermediateDirectories: true)
-        try Data("line".utf8).write(to: old.appendingPathComponent("openfortimac.log"))
-
-        LegacyMigration.migrateLogs(from: old, to: newLog)
-
-        #expect(try String(contentsOf: newLog, encoding: .utf8) == "line")
-        #expect(!FileManager.default.fileExists(atPath: old.path))
-    }
-
-    @Test func oldLogIsKeptWhenANewOneAlreadyExists() throws {
-        let root = try makeTempRoot()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let old = root.appendingPathComponent("OldLogs")
-        let newLog = root.appendingPathComponent("NewLogs/new.log")
-        for folder in [old, newLog.deletingLastPathComponent()] {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        }
-        try Data("old".utf8).write(to: old.appendingPathComponent("openfortimac.log"))
-        try Data("old rotated".utf8).write(to: old.appendingPathComponent("openfortimac.log.1"))
-        try Data("new".utf8).write(to: newLog)
-
-        LegacyMigration.migrateLogs(from: old, to: newLog)
-
-        #expect(try String(contentsOf: newLog, encoding: .utf8) == "new")
-        #expect(try String(contentsOf: URL(fileURLWithPath: newLog.path + ".1"), encoding: .utf8) == "old rotated")
-        #expect(try String(contentsOf: old.appendingPathComponent("openfortimac.log"), encoding: .utf8) == "old")
-    }
 }
 
 struct ServerEqualityTests {
