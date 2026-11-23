@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.7.0
+
+### Added
+- **Settings → General → Command Line Tool**: install or remove the `fortibar` command from the UI, no terminal needed (links into `/opt/homebrew/bin` or `/usr/local/bin`; Homebrew installs already have it)
+- `fortibar permission status` is listed in the help
+
+### Changed
+- New app icon and menu bar icon: a white **F** with a green "connected" dot. The menu bar icon shows the state with its dot: an empty ring when disconnected, half-filled while connecting, filled for one tunnel and a count badge for several
+- New social preview card and README header; the website uses the new icon
+
+### Fixed
+- The upgrade notes no longer claim that the original OpenFortiMac had a command line tool or log files, and the 1.4.0 notes no longer say the CLI was renamed
+
+### Internal
+- Removed the log file migration (OpenFortiMac never wrote log files), unused code and duplicated helpers; Dependabot keeps the pinned GitHub Actions up to date
+
 ## v1.6.0
 
 ### Security
