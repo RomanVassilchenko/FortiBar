@@ -1,5 +1,4 @@
 import Foundation
-import AppKit
 import UserNotifications
 import Combine
 import Network

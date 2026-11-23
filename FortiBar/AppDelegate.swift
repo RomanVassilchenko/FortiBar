@@ -1,6 +1,5 @@
 import Cocoa
 import SwiftUI
-import UserNotifications
 
 class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem!
