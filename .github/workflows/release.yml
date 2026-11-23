@@ -347,11 +347,12 @@ jobs:
           PR_URL=$(gh pr create --repo "$TAP_REPO" --base main --head "$BRANCH" \
             --title "fortibar $VERSION" \
             --body "Automated update for $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG (sha256 \`$SHA256\`).")
-          # Checks passed above, so ship it to brew users right away
-          gh pr merge "$PR_URL" --merge --delete-branch
+          # The tap's main branch is protected and requires its CI (style + audit),
+          # so enable auto-merge: GitHub ships the cask to brew users once the checks pass
+          gh pr merge "$PR_URL" --auto --merge --delete-branch
           {
             echo "### Homebrew tap"
-            echo "Merged $PR_URL"
+            echo "$PR_URL (auto-merges once tap CI passes)"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove signing keychain
