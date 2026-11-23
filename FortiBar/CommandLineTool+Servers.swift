@@ -112,7 +112,7 @@ extension CommandLineTool {
             return 2
         }
 
-        if let code = storePassword(options, serverID: server.id, required: false) {
+        if let code = storePassword(options, serverID: server.id) {
             return code
         }
 
@@ -198,7 +198,7 @@ extension CommandLineTool {
             return 2
         }
 
-        if let code = storePassword(options, serverID: server.id, required: false) {
+        if let code = storePassword(options, serverID: server.id) {
             return code
         }
 
@@ -417,7 +417,7 @@ extension CommandLineTool {
 
     /// `--password` prompts without echo, `--password-stdin` reads one line from stdin.
     /// Returns an exit code on failure, nil when done or not requested.
-    static func storePassword(_ options: Options, serverID: String, required: Bool) -> Int32? {
+    static func storePassword(_ options: Options, serverID: String) -> Int32? {
         var password: String?
         if options.has("--password-stdin") {
             password = readLine(strippingNewline: true)
@@ -430,7 +430,7 @@ extension CommandLineTool {
                 return 1
             }
             password = String(cString: raw)
-        } else if !required {
+        } else {
             return nil
         }
 

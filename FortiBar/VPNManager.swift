@@ -133,17 +133,6 @@ class VPNManager: ObservableObject {
 
     var hasTunnels: Bool { !tunnels.isEmpty }
 
-    /// Aggregate state, e.g. for accessibility: connected wins over in-progress.
-    var state: VPNState {
-        if let connected = tunnels.first(where: \.isConnected) {
-            return .connected(serverName: connected.serverName)
-        }
-        if tunnels.allSatisfy({ $0.state == .disconnecting }) && !tunnels.isEmpty {
-            return .disconnecting
-        }
-        return tunnels.isEmpty ? .disconnected : .connecting
-    }
-
     func status(for serverID: String) -> TunnelStatus? {
         tunnels.first { $0.serverID == serverID }
     }
