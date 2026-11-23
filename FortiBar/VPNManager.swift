@@ -1,5 +1,4 @@
 import Foundation
-import AppKit
 import UserNotifications
 import Combine
 import Network
@@ -132,17 +131,6 @@ class VPNManager: ObservableObject {
     var busyCount: Int { tunnels.filter(\.isBusy).count }
 
     var hasTunnels: Bool { !tunnels.isEmpty }
-
-    /// Aggregate state, e.g. for accessibility: connected wins over in-progress.
-    var state: VPNState {
-        if let connected = tunnels.first(where: \.isConnected) {
-            return .connected(serverName: connected.serverName)
-        }
-        if tunnels.allSatisfy({ $0.state == .disconnecting }) && !tunnels.isEmpty {
-            return .disconnecting
-        }
-        return tunnels.isEmpty ? .disconnected : .connecting
-    }
 
     func status(for serverID: String) -> TunnelStatus? {
         tunnels.first { $0.serverID == serverID }
@@ -533,7 +521,7 @@ class VPNManager: ObservableObject {
     /// Blocking: finds the ppp interface holding the given local address, e.g. "ppp1".
     static func findInterface(tunnelIP: String?) -> String? {
         guard let tunnelIP = tunnelIP else { return nil }
-        let text = run("/sbin/ifconfig", []).output
+        let text = Subprocess.run("/sbin/ifconfig", []).output
 
         // Blocks look like: "ppp1: flags=...\n\tinet 10.0.0.2 --> 169.254.2.1 ..."
         var currentInterface: String?
@@ -594,7 +582,7 @@ class VPNManager: ObservableObject {
 
     private static func runRoute(_ verb: String, cidr: String, interface: String) -> (success: Bool, output: String) {
         // Matches the sudoers rule: /sbin/route -n <verb> -net * -interface ppp*
-        let result = run("/usr/bin/sudo", ["-n", "/sbin/route", "-n", verb, "-net", cidr, "-interface", interface])
+        let result = Subprocess.run("/usr/bin/sudo", ["-n", "/sbin/route", "-n", verb, "-net", cidr, "-interface", interface])
         return (result.status == 0, result.output.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
@@ -685,7 +673,7 @@ class VPNManager: ObservableObject {
                     failures.append("\(pid): pid outside the allowed range")
                     continue
                 }
-                let result = Self.run("/usr/bin/sudo", arguments)
+                let result = Subprocess.run("/usr/bin/sudo", arguments)
                 let output = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
                 if result.status == 0 {
                     killed.append(pid)
@@ -736,7 +724,7 @@ class VPNManager: ObservableObject {
         var seen: Set<Int32> = [pid]
         while !queue.isEmpty, result.count < 64 {
             let parent = queue.removeFirst()
-            let output = run("/usr/bin/pgrep", ["-P", String(parent)]).output
+            let output = Subprocess.run("/usr/bin/pgrep", ["-P", String(parent)]).output
             for child in parsePIDs(output) where !seen.contains(child) {
                 seen.insert(child)
                 result.append(child)
@@ -964,24 +952,6 @@ class VPNManager: ObservableObject {
         DispatchQueue.main.async { [weak self] in
             if let self = self { work(self) }
         }
-    }
-
-    private static func run(_ executable: String, _ arguments: [String]) -> (status: Int32, output: String) {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-        do {
-            try process.run()
-        } catch {
-            return (-1, error.localizedDescription)
-        }
-        // Read before waiting so a full pipe cannot block the child
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        return (process.terminationStatus, String(data: data, encoding: .utf8) ?? "")
     }
 
     // MARK: - Logs & notifications

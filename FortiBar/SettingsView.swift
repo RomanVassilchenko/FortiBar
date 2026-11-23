@@ -286,15 +286,7 @@ struct SettingsView: View {
                     .keyboardShortcut(.defaultAction)
                     .disabled(busy)
             )
-        case .legacyRule:
-            return AnyView(HStack {
-                Button("Remove") { viewModel.removeSudoers() }
-                    .disabled(busy)
-                Button("Update…") { viewModel.setUpSudoers() }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(busy)
-            })
-        case .outdated:
+        case .legacyRule, .outdated:
             return AnyView(HStack {
                 Button("Remove") { viewModel.removeSudoers() }
                     .disabled(busy)
@@ -417,6 +409,18 @@ struct SettingsView: View {
             Section("Startup") {
                 Toggle("Launch at login", isOn: $viewModel.launchAtLogin)
             }
+
+            Section {
+                commandLineToolRow
+            } header: {
+                Text("Command Line Tool")
+            } footer: {
+                if let hint = commandLineToolHint {
+                    Text(hint)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
             
             Section("Config File") {
                 HStack {
@@ -439,6 +443,95 @@ struct SettingsView: View {
         .formStyle(.grouped)
     }
     
+    private var commandLineToolRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(cliStatusText)
+                    if let detail = cliStatusDetail {
+                        Text(detail)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .lineLimit(2)
+                            .truncationMode(.middle)
+                    }
+                }
+
+                Spacer(minLength: 12)
+
+                if viewModel.cliBusy {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+
+                if viewModel.cliStatus?.removable == true {
+                    Button("Remove") { viewModel.removeCLI() }
+                        .disabled(viewModel.cliBusy)
+                }
+                if cliCanInstall {
+                    Button("Install…") { viewModel.installCLI() }
+                        .disabled(viewModel.cliBusy || viewModel.cliLocation == .translocated)
+                }
+            }
+
+            if let error = viewModel.cliError {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            } else if let message = viewModel.cliMessage {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var cliCanInstall: Bool {
+        switch viewModel.cliStatus?.state {
+        case .notInstalled, .otherCopy, .dangling, .foreignLink: return true
+        case .installed, .notALink, .noDirectory, .none: return false
+        }
+    }
+
+    private var cliStatusText: String {
+        switch viewModel.cliStatus?.state {
+        case .none: return "Checking…"
+        case .notInstalled: return "Not installed"
+        case .installed: return "Installed"
+        case .otherCopy: return "Linked to another copy of FortiBar"
+        case .dangling: return "The fortibar link is broken"
+        case .foreignLink: return "fortibar links to another program"
+        case .notALink: return "A file named fortibar is in the way"
+        case .noDirectory: return "No /opt/homebrew/bin or /usr/local/bin"
+        }
+    }
+
+    private var cliStatusDetail: String? {
+        guard let status = viewModel.cliStatus, let link = status.linkPath else { return nil }
+        switch status.state {
+        case .notInstalled:
+            return "fortibar in \((link as NSString).deletingLastPathComponent)"
+        case .installed, .notALink:
+            return link
+        case .otherCopy(let target), .dangling(let target), .foreignLink(let target):
+            return "\(link) → \(target)"
+        case .noDirectory:
+            return nil
+        }
+    }
+
+    private var commandLineToolHint: String? {
+        switch viewModel.cliLocation {
+        case .translocated:
+            return "macOS runs FortiBar from a temporary copy. Move FortiBar to Applications and open it again to install the command."
+        case .unusual:
+            return "FortiBar is not in Applications: the link points at its current location and breaks if you move the app."
+        case .applications, .none:
+            return "Run fortibar help in Terminal for the commands."
+        }
+    }
+
     // MARK: - Log Tab
     
     private var logTab: some View {
@@ -863,6 +956,13 @@ class SettingsViewModel: ObservableObject {
     @Published private(set) var sudoersBusy = false
     @Published private(set) var resolvedOpenfortivpnPath: String?
 
+    @Published private(set) var cliStatus: CLILinkStatus?
+    @Published private(set) var cliLocation: CLIAppLocation?
+    @Published private(set) var cliBusy = false
+    @Published private(set) var cliError: String?
+    /// What the last install or remove did, e.g. which link it replaced
+    @Published private(set) var cliMessage: String?
+
     var isOpenfortivpnValid: Bool {
         FileManager.default.isExecutableFile(atPath: openfortivpnPath)
     }
@@ -880,6 +980,7 @@ class SettingsViewModel: ObservableObject {
         }
         loadLaunchAtLogin()
         refreshSudoersStatus()
+        refreshCLIStatus()
 
         // The path is saved on every keystroke, so wait for typing to settle before asking sudo
         pathObserver = $openfortivpnPath
@@ -1026,6 +1127,69 @@ class SettingsViewModel: ObservableObject {
                 self?.sudoersBusy = false
                 self?.sudoersError = message
                 self?.refreshSudoersStatus()
+            }
+        }
+    }
+
+    // MARK: - Command Line Tool
+
+    private var cliInstaller: CLIInstaller? {
+        guard let executable = Bundle.main.executableURL else { return nil }
+        return CLIInstaller(executablePath: executable.path)
+    }
+
+    func refreshCLIStatus() {
+        guard let installer = cliInstaller else { return }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let status = installer.status()
+            let location = installer.location
+            DispatchQueue.main.async {
+                self?.cliStatus = status
+                self?.cliLocation = location
+            }
+        }
+    }
+
+    func installCLI() {
+        changeCLI { installer in
+            let result = try installer.install()
+            if let replaced = result.replacedTarget {
+                return "Replaced the link to \(replaced)"
+            }
+            return nil
+        }
+    }
+
+    func removeCLI() {
+        changeCLI { installer in
+            try installer.remove()
+            return nil
+        }
+    }
+
+    /// `change` returns the message to show under the row.
+    private func changeCLI(_ change: @escaping (CLIInstaller) throws -> String?) {
+        guard let installer = cliInstaller else { return }
+        cliBusy = true
+        cliError = nil
+        cliMessage = nil
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            var message: String?
+            var errorMessage: String?
+            do {
+                message = try change(installer)
+            } catch SudoersError.cancelled {
+                // The user closed the password dialog: nothing to report
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+
+            DispatchQueue.main.async {
+                self?.cliBusy = false
+                self?.cliMessage = message
+                self?.cliError = errorMessage
+                self?.refreshCLIStatus()
             }
         }
     }

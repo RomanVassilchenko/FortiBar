@@ -1,10 +1,7 @@
 import Foundation
-import AppKit
 
-/// `fortibar` command line interface. The app executable doubles as the CLI:
-/// link it into PATH, e.g.
-///
-///     ln -s /Applications/FortiBar.app/Contents/MacOS/FortiBar /opt/homebrew/bin/fortibar
+/// `fortibar` command line interface. The app executable doubles as the CLI: Homebrew
+/// links it into PATH, or Settings › General › Command Line Tool does (see CLIInstaller).
 ///
 /// Commands are executed by the running app (launched in the background when needed),
 /// which owns the tunnels, the Keychain access and the sudo rule.
@@ -421,7 +418,6 @@ enum CommandLineTool {
         FileHandle.standardError.write(Data("fortibar: \(message)\n".utf8))
     }
 
-    @discardableResult
     static func usage(_ message: String) -> Int32 {
         printError(message)
         printUsage()
@@ -445,7 +441,7 @@ enum CommandLineTool {
           edit <server> [server options] [--name <new name>]
           remove <server> [--yes]             also deletes the saved password
           settings [--allow-multiple on|off] [--openfortivpn-path <path>] [--json]
-          permission [install|update]         sudo rule for openfortivpn and static routes
+          permission [status|install|update]  sudo rule for openfortivpn and static routes
           version
 
         Server options:

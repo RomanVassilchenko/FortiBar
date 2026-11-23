@@ -92,21 +92,21 @@ final class SudoersManager {
     /// Runs the binary through `sudo -n` (never prompts) with a harmless flag.
     /// `sudo -l` is not enough: for administrators it also lists commands that still need a password.
     func isAllowed(binaryPath: String) -> Bool {
-        let result = run("/usr/bin/sudo", ["-n", binaryPath, "--version"])
+        let result = Subprocess.run("/usr/bin/sudo", ["-n", binaryPath, "--version"])
         return result.status == 0 && !Self.needsPassword(result.output)
     }
 
     /// Deletes a route that cannot exist (TEST-NET-1 on a ppp unit that is never created):
     /// sudo either asks for a password or runs route, which then fails harmlessly.
     func routesAllowed() -> Bool {
-        let result = run("/usr/bin/sudo", ["-n", "/sbin/route", "-n", "delete", "-net", "192.0.2.0/24", "-interface", "ppp999"])
+        let result = Subprocess.run("/usr/bin/sudo", ["-n", "/sbin/route", "-n", "delete", "-net", "192.0.2.0/24", "-interface", "ppp999"])
         return !Self.needsPassword(result.output)
     }
 
     /// SIGKILLs a pid that cannot exist: sudo either refuses or runs kill, which reports
     /// "No such process". Nothing is ever killed.
     func forceStopAllowed() -> Bool {
-        let result = run("/usr/bin/sudo", ["-n", "/bin/kill", "-KILL", String(Self.forceStopProbePID)])
+        let result = Subprocess.run("/usr/bin/sudo", ["-n", "/bin/kill", "-KILL", String(Self.forceStopProbePID)])
         return Self.forceStopProbeSucceeded(status: result.status, output: result.output)
     }
 
@@ -176,11 +176,17 @@ final class SudoersManager {
 
     // MARK: - Helpers
 
-    /// Runs a shell script as root through the standard macOS authorization dialog.
-    /// osascript runs as a separate process, so the hardened runtime needs no Apple Events entitlement.
     private func runAsAdministrator(_ script: String, prompt: String) throws {
+        try Self.runAsAdministrator(script, prompt: prompt, fallbackError: "Could not change the sudo rule")
+    }
+
+    /// Blocking: runs a shell script as root through the standard macOS authorization dialog.
+    /// osascript runs as a separate process, so the hardened runtime needs no Apple Events entitlement.
+    /// Throws `SudoersError.cancelled` when the user closes the dialog. Every value interpolated
+    /// into `script` must already be validated and quoted by the caller.
+    static func runAsAdministrator(_ script: String, prompt: String, fallbackError: String) throws {
         let source = "do shell script \(appleScriptString(script)) with prompt \(appleScriptString(prompt)) with administrator privileges"
-        let result = run("/usr/bin/osascript", ["-e", source])
+        let result = Subprocess.run("/usr/bin/osascript", ["-e", source])
 
         guard result.status != 0 else { return }
 
@@ -188,10 +194,10 @@ final class SudoersManager {
         if result.output.contains("(-128)") {
             throw SudoersError.cancelled
         }
-        throw SudoersError.failed(cleanOsascriptError(result.output))
+        throw SudoersError.failed(cleanOsascriptError(result.output, fallback: fallbackError))
     }
 
-    private func appleScriptString(_ value: String) -> String {
+    private static func appleScriptString(_ value: String) -> String {
         let escaped = value
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
@@ -199,7 +205,7 @@ final class SudoersManager {
     }
 
     /// Turns "0:123: execution error: <message> (1)" into "<message>".
-    private func cleanOsascriptError(_ output: String) -> String {
+    private static func cleanOsascriptError(_ output: String, fallback: String) -> String {
         var message = output.trimmingCharacters(in: .whitespacesAndNewlines)
         if let range = message.range(of: "execution error: ") {
             message = String(message[range.upperBound...])
@@ -207,27 +213,6 @@ final class SudoersManager {
         if let range = message.range(of: #" \(-?\d+\)$"#, options: .regularExpression) {
             message.removeSubrange(range)
         }
-        return message.isEmpty ? "Could not change the sudo rule" : message
-    }
-
-    private func run(_ executable: String, _ arguments: [String]) -> (status: Int32, output: String) {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-
-        do {
-            try process.run()
-        } catch {
-            return (-1, error.localizedDescription)
-        }
-
-        // Read before waiting so a full pipe cannot block the child
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        return (process.terminationStatus, String(data: data, encoding: .utf8) ?? "")
+        return message.isEmpty ? fallback : message
     }
 }

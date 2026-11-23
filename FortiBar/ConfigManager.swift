@@ -23,7 +23,7 @@ class ConfigManager {
     }
     
     private init() {
-        // Settings and logs written under the previous app name
+        // Settings written under the previous app name
         LegacyMigration.migrateFiles()
         storedConfig = ConfigManager.loadConfig(from: ConfigManager.configPath)
     }

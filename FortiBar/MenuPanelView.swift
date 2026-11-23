@@ -287,18 +287,13 @@ private struct TunnelSubtitle: View {
         case .connected:
             if let since = tunnel?.connectedSince {
                 TimelineView(.periodic(from: since, by: 1)) { context in
-                    Text("Connected · \(Self.format(context.date.timeIntervalSince(since)))")
+                    Text("Connected · \(CommandLineTool.duration(context.date.timeIntervalSince(since)))")
                         .monospacedDigit()
                 }
             } else {
                 Text("Connected")
             }
         }
-    }
-
-    private static func format(_ interval: TimeInterval) -> String {
-        let seconds = max(0, Int(interval))
-        return String(format: "%02d:%02d:%02d", seconds / 3600, (seconds % 3600) / 60, seconds % 60)
     }
 }
 
