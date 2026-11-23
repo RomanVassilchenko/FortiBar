@@ -7,9 +7,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var vpnManager = VPNManager.shared
     private var configManager = ConfigManager.shared
     private var settingsWindow: NSWindow?
-    private let panelModel = PanelViewModel()
+    /// Lazy: its init reads the Keychain, which must wait for the Keychain migration
+    /// (and must not happen at all when unit tests host the app)
+    private lazy var panelModel = PanelViewModel()
     private let popover = NSPopover()
     private lazy var cliBridge = CLIBridge(vpn: vpnManager)
+    private var cliBridgeStarted = false
     private var sigtermSource: DispatchSourceSignal?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -18,6 +21,52 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // Unit tests are hosted in the app: no migration, tunnels or menu bar item then
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil { return }
 
+        // A second instance would fight the first over tunnels and state.json
+        if let other = earlierInstance() {
+            waitForExit(of: other)
+            return
+        }
+        finishLaunching()
+    }
+
+    /// Another FortiBar of this user that was started before this one, if any. Only earlier
+    /// ones count, so two instances started together never both give way.
+    private func earlierInstance() -> NSRunningApplication? {
+        let current = NSRunningApplication.current
+        guard let bundleID = Bundle.main.bundleIdentifier, let myLaunch = current.launchDate else { return nil }
+        return NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first { app in
+            // .prohibited: not an app instance (e.g. the `fortibar` CLI, which runs this executable)
+            guard app.processIdentifier != current.processIdentifier, !app.isTerminated,
+                  app.activationPolicy != .prohibited else { return false }
+            guard let launch = app.launchDate else { return false }
+            return launch < myLaunch || (launch == myLaunch && app.processIdentifier < current.processIdentifier)
+        }
+    }
+
+    /// An upgrade (Homebrew) quits the old instance, which takes a few seconds while it closes
+    /// its tunnels: wait for it, and give way if it keeps running.
+    private func waitForExit(of other: NSRunningApplication) {
+        let pid = other.processIdentifier
+        DispatchQueue.global(qos: .userInitiated).async {
+            // kill(pid, 0) is thread-safe, unlike NSRunningApplication's main-loop-updated properties
+            func isRunning() -> Bool { kill(pid, 0) == 0 || errno == EPERM }
+            let deadline = Date().addingTimeInterval(10)
+            while isRunning() && Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.2)
+            }
+            let stillRunning = isRunning()
+            DispatchQueue.main.async {
+                if stillRunning {
+                    other.activate(options: [])
+                    NSApp.terminate(nil)
+                } else {
+                    self.finishLaunching()
+                }
+            }
+        }
+    }
+
+    private func finishLaunching() {
         // Passwords saved under the previous app name; before anything reads the Keychain
         LegacyMigration.migrateKeychain()
 
@@ -58,6 +107,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         installSignalHandler()
         cliBridge.start()
+        cliBridgeStarted = true
         vpnManager.connectAutoStartServers()
     }
 
@@ -249,7 +299,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        cliBridge.stop()
+        // Only the instance that published state.json may remove it: a test host (or a second
+        // instance) quitting would otherwise make a running FortiBar look stopped to the CLI
+        if cliBridgeStarted { cliBridge.stop() }
     }
 
     /// SIGTERM (e.g. `kill`, launchd) goes through the same graceful path.

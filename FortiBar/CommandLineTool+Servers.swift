@@ -24,6 +24,14 @@ extension CommandLineTool {
         "--allow-multiple", "--openfortivpn-path"
     ]
 
+    /// Options without a value. Anything else starting with "--" is rejected, so a typo
+    /// like --auto-conect fails instead of being ignored.
+    static let flagOptions: Set<String> = [
+        "--password", "--password-stdin", "--no-routes-dns", "--routes-dns",
+        "--clear-routes", "--auto-connect", "--no-auto-connect",
+        "--auto-reconnect", "--no-auto-reconnect", "--no-cert", "--yes", "-y"
+    ]
+
     static func parseOptions(_ args: [String]) -> Options? {
         var options = Options()
         var index = 0
@@ -39,15 +47,22 @@ extension CommandLineTool {
                 let key = arg == "--username" ? "--user" : arg
                 if let value = inlineValue {
                     options.values[key, default: []].append(value)
-                } else if index + 1 < args.count {
+                } else if index + 1 < args.count, !args[index + 1].hasPrefix("--") {
                     options.values[key, default: []].append(args[index + 1])
                     index += 1
                 } else {
                     printError("\(arg) needs a value")
                     return nil
                 }
-            } else if arg.hasPrefix("--") || arg == "-y" {
+            } else if flagOptions.contains(arg) {
+                guard inlineValue == nil else {
+                    printError("\(arg) does not take a value")
+                    return nil
+                }
                 options.flags.insert(arg)
+            } else if arg.hasPrefix("--") {
+                printError("unknown option \(arg)")
+                return nil
             } else {
                 options.positional.append(arg)
             }
@@ -60,6 +75,10 @@ extension CommandLineTool {
 
     static func add(_ args: [String]) -> Int32 {
         guard let options = parseOptions(args) else { return 2 }
+        // `add My Server …` without quotes would silently drop "Server"
+        guard options.positional.count <= (options.value("--name") == nil ? 1 : 0) else {
+            return usage("unexpected argument \"\(options.positional.last!)\" (quote names with spaces)")
+        }
         guard let name = (options.value("--name") ?? options.positional.first)?.trimmingCharacters(in: .whitespaces),
               !name.isEmpty else {
             return usage("add needs a name: fortibar add <name> --host <host> --user <user>")
@@ -99,6 +118,11 @@ extension CommandLineTool {
 
         servers.append(server)
         ConfigManager.shared.saveServers(servers)
+        guard isSaved(server) else {
+            KeychainHelper.delete(for: server.id)
+            printError("could not save \(ConfigManager.configPath.path)")
+            return 1
+        }
         configChanged()
         print("Added \(server.name)" + (KeychainHelper.read(for: server.id) == nil ? " (no password yet: fortibar edit \"\(server.name)\" --password)" : ""))
         warnIfRoutesNeedPermission(server)
@@ -111,6 +135,9 @@ extension CommandLineTool {
         guard let options = parseOptions(args) else { return 2 }
         guard let query = options.positional.first else {
             return usage("edit needs a server: fortibar edit <server> [options]")
+        }
+        guard options.positional.count == 1 else {
+            return usage("unexpected argument \"\(options.positional[1])\" (quote names with spaces)")
         }
         guard let old = resolve(query) else { return 2 }
 
@@ -136,13 +163,22 @@ extension CommandLineTool {
         if let value = options.value("--cert") { cert = nonEmpty(value) }
         if options.has("--no-cert") { cert = nil }
 
+        // A plaintext password from an old config file is never written back: it moves to the
+        // Keychain (unless one is saved there or given now) and is dropped from config.json
+        let settingPassword = options.has("--password") || options.has("--password-stdin")
+        var plaintextPassword = old.password.flatMap { $0.isEmpty ? nil : $0 }
+        if let plain = plaintextPassword,
+           settingPassword || KeychainHelper.read(for: old.id) != nil || KeychainHelper.save(password: plain, for: old.id) {
+            plaintextPassword = nil
+        }
+
         let name = options.value("--name")?.trimmingCharacters(in: .whitespaces) ?? old.name
         let server = VPNServer(
             name: name,
             host: options.value("--host") ?? old.host,
             port: options.value("--port").map { Int($0) ?? -1 } ?? old.port,
             username: options.value("--user") ?? old.username,
-            password: old.password,
+            password: plaintextPassword,
             trustedCert: cert,
             icon: options.value("--icon") ?? old.icon,
             id: old.id,
@@ -151,7 +187,7 @@ extension CommandLineTool {
             autoConnect: autoConnect,
             autoReconnect: autoReconnect
         )
-        if let problem = validate(server) {
+        if let problem = validate(server, previous: old) {
             printError(problem)
             return 2
         }
@@ -169,6 +205,10 @@ extension CommandLineTool {
         guard let index = servers.firstIndex(where: { $0.id == old.id }) else { return 1 }
         servers[index] = server
         ConfigManager.shared.saveServers(servers)
+        guard isSaved(server) else {
+            printError("could not save \(ConfigManager.configPath.path)")
+            return 1
+        }
         configChanged()
         print("Updated \(server.name)")
 
@@ -191,6 +231,9 @@ extension CommandLineTool {
         guard let query = options.positional.first else {
             return usage("remove needs a server: fortibar remove <server> [--yes]")
         }
+        guard options.positional.count == 1 else {
+            return usage("unexpected argument \"\(options.positional[1])\" (quote names with spaces)")
+        }
         guard let server = resolve(query) else { return 2 }
 
         if !(options.has("--yes") || options.has("-y")) {
@@ -211,8 +254,13 @@ extension CommandLineTool {
         }
 
         let servers = ConfigManager.shared.config.servers.filter { $0.id != server.id }
-        KeychainHelper.delete(for: server.id)
         ConfigManager.shared.saveServers(servers)
+        // saveServers does not report failures: only drop the password once the server is really gone
+        guard !ConfigManager.shared.config.servers.contains(where: { $0.id == server.id }) else {
+            printError("could not save \(ConfigManager.configPath.path)")
+            return 1
+        }
+        KeychainHelper.delete(for: server.id)
         configChanged()
         print("Removed \(server.name)")
         return 0
@@ -264,22 +312,29 @@ extension CommandLineTool {
 
     static func settings(_ args: [String], json: Bool) -> Int32 {
         guard let options = parseOptions(args) else { return 2 }
-        var changed = false
-
-        if let value = options.value("--allow-multiple") {
-            guard let enabled = parseBool(value) else { return usage("--allow-multiple takes on or off") }
-            ConfigManager.shared.saveAllowMultipleConnections(enabled)
-            changed = true
+        if let extra = options.positional.first ?? options.flags.first {
+            return usage("unexpected argument \"\(extra)\"")
         }
-        if let path = options.value("--openfortivpn-path") {
-            guard FileManager.default.isExecutableFile(atPath: path) else {
-                printError("not an executable: \(path)")
+
+        // Validate everything before saving anything, so a bad value leaves the config untouched
+        let enabled = options.value("--allow-multiple").map(parseBool)
+        if case .some(.none) = enabled { return usage("--allow-multiple takes on or off") }
+        let path = options.value("--openfortivpn-path")
+        if let path = path {
+            // Relative paths would be resolved against the app's working directory, not this one
+            guard path.hasPrefix("/"), FileManager.default.isExecutableFile(atPath: path) else {
+                printError("not an executable (absolute path needed): \(path)")
                 return 2
             }
-            ConfigManager.shared.saveOpenfortivpnPath(path)
-            changed = true
         }
-        if changed { configChanged() }
+
+        if let enabled = enabled ?? nil {
+            ConfigManager.shared.saveAllowMultipleConnections(enabled)
+        }
+        if let path = path {
+            ConfigManager.shared.saveOpenfortivpnPath(path)
+        }
+        if enabled != nil || path != nil { configChanged() }
 
         let config = ConfigManager.shared.config
         if json {
@@ -298,6 +353,10 @@ extension CommandLineTool {
     // MARK: - permission
 
     static func permission(_ args: [String]) -> Int32 {
+        // A typo (`permission instal`) must not look like a successful status check
+        if let sub = args.first, !["install", "update", "status"].contains(sub) || args.count > 1 {
+            return usage("permission takes install, update or nothing")
+        }
         let path = VPNManager.locateOpenfortivpn()
         if args.first == "install" || args.first == "update" {
             guard let path = path else {
@@ -320,6 +379,7 @@ extension CommandLineTool {
         case .external: text = "ok (a rule not managed by FortiBar)"
         case .legacyRule: text = "ok, but under the old OpenFortiMac rule name: run fortibar permission update"
         case .routesMissing: text = "static routes not allowed: run fortibar permission update"
+        case .forceStopMissing: text = "force stop of a hung tunnel not allowed: run fortibar permission update"
         case .outdated: text = "rule points to another openfortivpn: run fortibar permission update"
         case .missing: text = "not set up: run fortibar permission install"
         case .binaryNotFound: text = "openfortivpn not found"
@@ -330,15 +390,26 @@ extension CommandLineTool {
 
     // MARK: - Helpers
 
-    static func validate(_ server: VPNServer) -> String? {
+    /// `previous`: the profile being edited; its icon is accepted as is even if no longer offered.
+    static func validate(_ server: VPNServer, previous: VPNServer? = nil) -> String? {
+        // These values end up as `key = value` lines in openfortivpn's config file:
+        // a line break would add options of its own (openfortivpn runs as root)
+        let hasControl: (String) -> Bool = { $0.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) } }
         if server.name.isEmpty { return "name cannot be empty" }
-        if server.host.isEmpty || server.host.contains(where: \.isWhitespace) { return "host cannot be empty or contain spaces" }
+        if hasControl(server.name) { return "name cannot contain control characters" }
+        if server.host.isEmpty || server.host.contains(where: \.isWhitespace) || hasControl(server.host) {
+            return "host cannot be empty or contain spaces"
+        }
         if !(1...65535).contains(server.port) { return "port must be a number between 1 and 65535" }
         if server.username.trimmingCharacters(in: .whitespaces).isEmpty { return "user cannot be empty" }
+        if hasControl(server.username) { return "user cannot contain control characters" }
+        if let cert = server.trustedCert, cert.contains(where: \.isWhitespace) || hasControl(cert) {
+            return "certificate digest cannot contain spaces"
+        }
         if let bad = server.staticRoutes.first(where: { !VPNServer.isValidCIDR($0) }) {
             return "invalid route \"\(bad)\": use CIDR notation like 10.20.30.0/24"
         }
-        if let icon = server.icon, !VPNServer.iconChoices.contains(icon) {
+        if let icon = server.icon, icon != previous?.icon, !VPNServer.iconChoices.contains(icon) {
             return "unknown icon \"\(icon)\": choose one of " + VPNServer.iconChoices.joined(separator: ", ")
         }
         return nil
@@ -352,6 +423,8 @@ extension CommandLineTool {
             password = readLine(strippingNewline: true)
         } else if options.has("--password") {
             var buffer = [CChar](repeating: 0, count: 1024)
+            // Do not leave the clear text in the process memory longer than needed
+            defer { _ = memset_s(&buffer, buffer.count, 0, buffer.count) }
             guard let raw = readpassphrase("Password: ", &buffer, buffer.count, RPP_ECHO_OFF | RPP_REQUIRE_TTY) else {
                 printError("could not read the password (no terminal? use --password-stdin)")
                 return 1
@@ -380,7 +453,16 @@ extension CommandLineTool {
     /// Tells a running app to re-read config.json, so it does not overwrite these changes.
     static func configChanged() {
         guard runningState() != nil else { return }
-        send(.reloadConfig, server: nil)
+        // The change is saved either way; send() has printed why the app did not pick it up
+        _ = send(.reloadConfig, server: nil)
+    }
+
+    /// True when config.json now holds exactly this profile (ConfigManager does not report write errors).
+    static func isSaved(_ server: VPNServer) -> Bool {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        guard let saved = ConfigManager.shared.config.servers.first(where: { $0.id == server.id }) else { return false }
+        return (try? encoder.encode(saved)) == (try? encoder.encode(server))
     }
 
     static func nonEmpty(_ value: String?) -> String? {

@@ -66,6 +66,14 @@ private final class TunnelConnection {
     var awaitingCertificateDigest = false
     /// The profile with the certificate pinned: the attempt is repeated with it once the process is gone
     var retryServer: VPNServer?
+    /// Bytes after the last newline: pipe reads do not end on line (or UTF-8) boundaries
+    var outputBuffer = Data()
+    /// The pipe reached EOF: all output has been handled
+    var outputClosed = false
+    /// Set when the process exited; termination is handled once the output is drained
+    var exitCode: Int32?
+    /// A stop was requested: the SIGTERM grace period (and any force stop) runs once
+    var stopRequested = false
 
     init(server: VPNServer, process: Process, pipe: Pipe, configPath: String) {
         self.server = server
@@ -179,21 +187,30 @@ class VPNManager: ObservableObject {
         }
     }
 
-    /// Connects every server marked "Connect at launch" that has a saved password.
+    /// Connects every server marked "Connect at launch" that has a saved password
+    /// (single-connection mode: the first such server).
     func connectAutoStartServers() {
         let servers = ConfigManager.shared.config.servers.filter(\.autoConnect)
         let allowMultiple = ConfigManager.shared.config.allowMultipleConnections
-        for server in allowMultiple ? servers : Array(servers.prefix(1)) {
+        for server in servers {
             guard let password = KeychainHelper.read(for: server.id), !password.isEmpty else {
                 addLog(server.name, "Auto-connect skipped: no saved password")
                 continue
             }
             connect(to: server, password: password)
+            if !allowMultiple { break }
         }
     }
 
     /// Runs on a background queue.
     private func performConnection(server: VPNServer, password: String, attempt: UUID) {
+        // A line break would end the value and inject further options into a config read by root
+        let configValues = [server.host, server.username, password, server.trustedCert ?? ""]
+        guard !configValues.contains(where: { $0.contains(where: \.isNewline) }) else {
+            onMain { $0.connectionFailed(server: server, reason: "Host, username, password or certificate contains a line break") }
+            return
+        }
+
         guard let openfortivpnPath = findOpenfortivpnBinary() else {
             onMain { $0.connectionFailed(server: server, reason: "openfortivpn not found. Install via: brew install openfortivpn") }
             return
@@ -220,10 +237,13 @@ class VPNManager: ObservableObject {
         }
 
         do {
-            // Created 0600 before the password is written
-            FileManager.default.createFile(atPath: configURL.path, contents: nil, attributes: [.posixPermissions: 0o600])
+            // Created 0600 before the password is written; if that fails, never fall back to a umask-default file
+            guard FileManager.default.createFile(atPath: configURL.path, contents: nil, attributes: [.posixPermissions: 0o600]) else {
+                throw CocoaError(.fileWriteUnknown)
+            }
             try configContent.write(to: configURL, atomically: false, encoding: .utf8)
         } catch {
+            try? FileManager.default.removeItem(at: configURL)
             onMain { $0.connectionFailed(server: server, reason: "Failed to create config: \(error.localizedDescription)") }
             return
         }
@@ -282,15 +302,20 @@ class VPNManager: ObservableObject {
 
         pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
-            guard !data.isEmpty, let output = String(data: data, encoding: .utf8) else { return }
+            if data.isEmpty {
+                // EOF: without this the handler keeps firing with empty reads
+                handle.readabilityHandler = nil
+            }
+            // Empty data tells the main thread the output is complete
             DispatchQueue.main.async {
-                self?.handleOutput(output, conn: conn)
+                self?.handleOutput(data, conn: conn)
             }
         }
 
         process.terminationHandler = { [weak self] proc in
+            let exitCode = proc.terminationStatus
             DispatchQueue.main.async {
-                self?.handleTermination(conn: conn, exitCode: proc.terminationStatus)
+                self?.processExited(conn: conn, exitCode: exitCode)
             }
         }
 
@@ -305,12 +330,58 @@ class VPNManager: ObservableObject {
             try process.run()
         } catch {
             connectionFailed(server: server, reason: "Failed to start process: \(error.localizedDescription)")
+            // No termination callback will come: release the connection (and the config file) now
+            finish(conn)
         }
     }
 
     // MARK: - Output parsing
 
-    private func handleOutput(_ output: String, conn: TunnelConnection) {
+    /// Main thread: buffers raw pipe data and handles it line by line. Empty data is EOF.
+    private func handleOutput(_ data: Data, conn: TunnelConnection) {
+        if data.isEmpty {
+            conn.outputClosed = true
+            if !conn.outputBuffer.isEmpty {
+                let rest = conn.outputBuffer
+                conn.outputBuffer = Data()
+                handleLines(String(decoding: rest, as: UTF8.self), conn: conn)
+            }
+            if let exitCode = conn.exitCode {
+                handleTermination(conn: conn, exitCode: exitCode)
+            }
+            return
+        }
+
+        conn.outputBuffer.append(data)
+        guard let newline = conn.outputBuffer.lastIndex(of: UInt8(ascii: "\n")) else {
+            // A runaway line without a newline: do not buffer it forever
+            if conn.outputBuffer.count > 65_536 {
+                let text = String(decoding: conn.outputBuffer, as: UTF8.self)
+                conn.outputBuffer = Data()
+                handleLines(text, conn: conn)
+            }
+            return
+        }
+        let complete = conn.outputBuffer.subdata(in: conn.outputBuffer.startIndex..<newline)
+        conn.outputBuffer = conn.outputBuffer.subdata(in: (newline + 1)..<conn.outputBuffer.endIndex)
+        handleLines(String(decoding: complete, as: UTF8.self), conn: conn)
+    }
+
+    /// Main thread: the process exited. Output still in the pipe (e.g. the certificate
+    /// digest printed right before exiting) is handled first, so wait for EOF.
+    private func processExited(conn: TunnelConnection, exitCode: Int32) {
+        conn.exitCode = exitCode
+        if conn.outputClosed {
+            handleTermination(conn: conn, exitCode: exitCode)
+            return
+        }
+        // A leftover child may keep the pipe open: do not wait for EOF forever
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            self?.handleTermination(conn: conn, exitCode: exitCode)
+        }
+    }
+
+    private func handleLines(_ output: String, conn: TunnelConnection) {
         guard connections[conn.server.id] === conn else { return }
         let server = conn.server
 
@@ -341,7 +412,11 @@ class VPNManager: ObservableObject {
             }
 
             if line.contains("Tunnel is up and running") {
-                markConnected(conn: conn)
+                // Not after a disconnect or a failure (timeout) already terminating the process:
+                // a .connected state would turn its exit into a "drop" and auto-reconnect
+                if status(for: server.id)?.state == .connecting, !conn.failed {
+                    markConnected(conn: conn)
+                }
                 continue
             }
 
@@ -497,7 +572,7 @@ class VPNManager: ObservableObject {
                     manager.addLog(server.name, "Route added: \(cidr) via \(interface)")
                 } else {
                     manager.addLog(server.name, "ERROR: could not add route \(cidr) via \(interface): \(result.output)")
-                    if result.output.contains("password is required") {
+                    if SudoersManager.needsPassword(result.output) {
                         manager.addLog(server.name, "Static routes need permission: open Settings › Permission and click Update")
                         manager.showNotification(title: "Static routes not added", body: "\(server.name): update the permission in Settings")
                     }
@@ -565,17 +640,119 @@ class VPNManager: ObservableObject {
         return active.map(\.process)
     }
 
+    /// Seconds openfortivpn gets to exit after SIGTERM before it is force-stopped
+    static let terminateGracePeriod: TimeInterval = 5
+    /// Seconds to wait for the exit callback after SIGKILL before dropping the entry anyway
+    static let forceStopGracePeriod: TimeInterval = 3
+
     /// Sends SIGTERM to the sudo parent, which relays it to openfortivpn so it can restore routes and DNS.
     private func terminate(conn: TunnelConnection) {
         if conn.process.isRunning {
             conn.process.terminate()
         }
 
-        // Safety net: drop the entry if the process does not report back
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+        guard !conn.stopRequested else { return }
+        conn.stopRequested = true
+
+        // openfortivpn may hang and ignore SIGTERM: escalate if the process does not report back
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.terminateGracePeriod) { [weak self] in
             guard let self = self, !conn.finished else { return }
-            self.addLog(conn.server.name, "Disconnected (forced)")
-            self.finish(conn)
+            self.forceStop(conn: conn)
+        }
+    }
+
+    /// Main thread. Last resort: SIGKILL the root processes under the sudo parent (openfortivpn,
+    /// its pppd) through the narrow `/bin/kill -KILL <pid>` sudo rule. The usual exit callback
+    /// then cleans up; if it still does not come, the entry is dropped.
+    private func forceStop(conn: TunnelConnection) {
+        let name = conn.server.name
+        // The sudo parent exited and its callback is pending (e.g. waiting for pipe EOF)
+        guard conn.process.isRunning else {
+            dropForcedStop(conn: conn)
+            return
+        }
+
+        let sudoPID = conn.process.processIdentifier
+        addLog(name, "openfortivpn did not stop within \(Int(Self.terminateGracePeriod))s: force-stopping it")
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let pids = Self.descendantPIDs(of: sudoPID)
+            var killed: [Int32] = []
+            var failures: [String] = []
+            var notAllowed = false
+            for pid in pids {
+                guard let arguments = SudoersManager.forceStopArguments(pid: pid) else {
+                    failures.append("\(pid): pid outside the allowed range")
+                    continue
+                }
+                let result = Self.run("/usr/bin/sudo", arguments)
+                let output = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+                if result.status == 0 {
+                    killed.append(pid)
+                } else if SudoersManager.needsPassword(output) {
+                    notAllowed = true
+                    break
+                } else if !output.contains("No such process") {
+                    // "No such process": it exited meanwhile, which is what we wanted
+                    failures.append("\(pid): \(output)")
+                }
+            }
+
+            self?.onMain { manager in
+                if pids.isEmpty {
+                    manager.addLog(name, "Force stop: no processes found under sudo (pid \(sudoPID))")
+                } else if notAllowed {
+                    manager.addLog(name, "ERROR: could not force-stop openfortivpn: the permission rule does not allow it. Open Settings › Permission and click Update; until then the process may keep running as root")
+                    manager.showNotification(title: "VPN not stopped", body: "\(name): update the permission in Settings")
+                } else {
+                    if !killed.isEmpty {
+                        manager.addLog(name, "Force stop: sent SIGKILL to pid \(killed.map(String.init).joined(separator: ", ")). Routes and DNS set by openfortivpn may not have been restored")
+                    }
+                    for failure in failures {
+                        manager.addLog(name, "ERROR: force stop failed for pid \(failure)")
+                    }
+                }
+
+                // The exit callback normally arrives now; drop the entry if it does not
+                DispatchQueue.main.asyncAfter(deadline: .now() + Self.forceStopGracePeriod) { [weak manager] in
+                    guard let manager = manager, !conn.finished else { return }
+                    manager.dropForcedStop(conn: conn)
+                }
+            }
+        }
+    }
+
+    private func dropForcedStop(conn: TunnelConnection) {
+        guard !conn.finished else { return }
+        addLog(conn.server.name, "Disconnected (forced)")
+        finish(conn)
+    }
+
+    /// Background queue: every process below `pid` (sudo's own monitor, openfortivpn, pppd),
+    /// deepest first so children go before the parents that would otherwise reap them.
+    private static func descendantPIDs(of pid: Int32) -> [Int32] {
+        var result: [Int32] = []
+        var queue = [pid]
+        var seen: Set<Int32> = [pid]
+        while !queue.isEmpty, result.count < 64 {
+            let parent = queue.removeFirst()
+            let output = run("/usr/bin/pgrep", ["-P", String(parent)]).output
+            for child in parsePIDs(output) where !seen.contains(child) {
+                seen.insert(child)
+                result.append(child)
+                queue.append(child)
+            }
+        }
+        return result.reversed()
+    }
+
+    /// One pid per line, as printed by pgrep; anything that is not a positive integer is ignored.
+    static func parsePIDs(_ output: String) -> [Int32] {
+        output.split(whereSeparator: \.isNewline).compactMap { line in
+            let text = line.trimmingCharacters(in: .whitespaces)
+            guard !text.isEmpty, text.allSatisfy(\.isASCII), text.allSatisfy(\.isNumber),
+                  let pid = Int32(text), pid > 0 else { return nil }
+            return pid
         }
     }
 
@@ -593,13 +770,24 @@ class VPNManager: ObservableObject {
         let dropped = previousState.isConnected || (previousState == .connecting && inReconnectCycle)
         let reconnect = dropped && !conn.fatal && autoReconnectEnabled(for: server.id)
 
-        if let pinned = conn.retryServer {
+        // Not if the user disconnected while the pinned retry was pending
+        if let pinned = conn.retryServer, previousState == .connecting {
             finish(conn, keepStatus: true)
-            if let password = KeychainHelper.read(for: pinned.id), !password.isEmpty {
-                startAttempt(server: pinned, password: password)
-            } else {
-                reportError(server: pinned, reason: "No saved password")
-                removeTunnel(pinned.id)
+            let attempt = status?.attempt
+            // The Keychain can block (e.g. an access prompt): read it off the main thread
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                let password = KeychainHelper.read(for: pinned.id)
+                self?.onMain { manager in
+                    // Not if the user disconnected (or reconnected) while the password was read
+                    guard let current = manager.status(for: pinned.id), current.attempt == attempt,
+                          current.state == .connecting, manager.connections[pinned.id] == nil else { return }
+                    if let password = password, !password.isEmpty {
+                        manager.startAttempt(server: pinned, password: password)
+                    } else {
+                        manager.reportError(server: pinned, reason: "No saved password")
+                        manager.removeTunnel(pinned.id)
+                    }
+                }
             }
             return
         }
@@ -665,6 +853,21 @@ class VPNManager: ObservableObject {
     private func reconnect(serverID: String) {
         guard let status = status(for: serverID) else { return }
 
+        // The Keychain can block (e.g. an access prompt): read it off the main thread
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let password = KeychainHelper.read(for: serverID)
+            self?.onMain { manager in
+                // Skip if the user disconnected, or another trigger (timer, network back) already
+                // retried while the password was read
+                guard let current = manager.status(for: serverID), current.state == status.state,
+                      current.attempt == status.attempt, manager.connections[serverID] == nil else { return }
+                manager.reconnect(serverID: serverID, status: current, password: password)
+            }
+        }
+    }
+
+    /// Main thread, with the password already read from the Keychain.
+    private func reconnect(serverID: String, status: TunnelStatus, password: String?) {
         // The profile may have been edited or deleted in the meantime
         guard let server = ConfigManager.shared.config.servers.first(where: { $0.id == serverID }),
               server.autoReconnect else {
@@ -672,7 +875,7 @@ class VPNManager: ObservableObject {
             removeTunnel(serverID)
             return
         }
-        guard let password = KeychainHelper.read(for: server.id), !password.isEmpty else {
+        guard let password = password, !password.isEmpty else {
             reportError(server: server, reason: "Auto-reconnect stopped: no saved password")
             removeTunnel(serverID)
             return
@@ -732,6 +935,8 @@ class VPNManager: ObservableObject {
     private func finish(_ conn: TunnelConnection, keepStatus: Bool = false) {
         conn.finished = true
         conn.pipe.fileHandleForReading.readabilityHandler = nil
+        // The handler captures the connection, which owns the process: break the cycle
+        conn.process.terminationHandler = nil
         try? FileManager.default.removeItem(atPath: conn.configPath)
         removeStaticRoutes(conn.routesAdded)
 

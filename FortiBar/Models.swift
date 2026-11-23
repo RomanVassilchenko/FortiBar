@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 struct AppConfig: Codable {
     var servers: [VPNServer]
@@ -34,7 +35,7 @@ struct AppConfig: Codable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        servers = try container.decodeIfPresent([VPNServer].self, forKey: .servers) ?? []
+        servers = Self.uniquingIDs(try container.decodeIfPresent([VPNServer].self, forKey: .servers) ?? [])
         openfortivpnPath = try container.decodeIfPresent(String.self, forKey: .openfortivpnPath) ?? Self.defaultOpenfortivpnPath
         allowMultipleConnections = try container.decodeIfPresent(Bool.self, forKey: .allowMultipleConnections) ?? false
     }
@@ -46,6 +47,28 @@ struct AppConfig: Codable {
         // Written only when enabled, so existing config files stay unchanged
         if allowMultipleConnections {
             try container.encode(true, forKey: .allowMultipleConnections)
+        }
+    }
+
+    /// Two hand-written profiles without an id (or with the same one) would share Keychain
+    /// items and tunnel state: later duplicates get a deterministic "-2", "-3"… suffix.
+    static func uniquingIDs(_ servers: [VPNServer]) -> [VPNServer] {
+        var seen: Set<String> = []
+        return servers.map { server in
+            guard seen.contains(server.id) else {
+                seen.insert(server.id)
+                return server
+            }
+            var counter = 2
+            while seen.contains("\(server.id)-\(counter)") { counter += 1 }
+            let id = "\(server.id)-\(counter)"
+            seen.insert(id)
+            return VPNServer(
+                name: server.name, host: server.host, port: server.port, username: server.username,
+                password: server.password, trustedCert: server.trustedCert, icon: server.icon, id: id,
+                noRoutesDNS: server.noRoutesDNS, staticRoutes: server.staticRoutes,
+                autoConnect: server.autoConnect, autoReconnect: server.autoReconnect
+            )
         }
     }
 
@@ -121,11 +144,14 @@ struct VPNServer: Codable, Identifiable, Hashable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
         name = try container.decode(String.self, forKey: .name)
         host = try container.decode(String.self, forKey: .host)
         port = try container.decodeIfPresent(Int.self, forKey: .port) ?? 443
         username = try container.decode(String.self, forKey: .username)
+        // A hand-written profile without an id: a random one would change on every load, so the
+        // app and the CLI would disagree and the saved password would be lost after a restart
+        id = try container.decodeIfPresent(String.self, forKey: .id)
+            ?? Self.derivedID(name: name, host: host, port: port, username: username)
         password = try container.decodeIfPresent(String.self, forKey: .password)
         trustedCert = try container.decodeIfPresent(String.self, forKey: .trustedCert)
         icon = try container.decodeIfPresent(String.self, forKey: .icon)
@@ -160,6 +186,15 @@ struct VPNServer: Codable, Identifiable, Hashable {
         }
     }
 
+    /// Stable UUID-formatted id computed from the profile, for configs written without ids.
+    static func derivedID(name: String, host: String, port: Int, username: String) -> String {
+        let digest = SHA256.hash(data: Data("\(name)\u{0}\(host)\u{0}\(port)\u{0}\(username)".utf8))
+        let hex = digest.prefix(16).map { String(format: "%02X", $0) }.joined()
+        let parts = [hex.prefix(8), hex.dropFirst(8).prefix(4), hex.dropFirst(12).prefix(4),
+                     hex.dropFirst(16).prefix(4), hex.dropFirst(20).prefix(12)]
+        return parts.joined(separator: "-")
+    }
+
     /// The same profile with the gateway certificate pinned (SHA-256 digest as openfortivpn prints it).
     func pinning(certificate digest: String) -> VPNServer {
         VPNServer(
@@ -174,9 +209,11 @@ struct VPNServer: Codable, Identifiable, Hashable {
         staticRoutes.filter { Self.isValidCIDR($0) }
     }
 
-    /// Strict IPv4 CIDR check: a.b.c.d/n with plain decimal parts.
+    /// Strict IPv4 CIDR check: a.b.c.d/n with plain decimal parts. ASCII digits only, and no
+    /// leading zeros: inet_aton (used by /sbin/route) reads "010" as octal 8.
     static func isValidCIDR(_ value: String) -> Bool {
-        guard value.range(of: #"^\d{1,3}(\.\d{1,3}){3}/\d{1,2}$"#, options: .regularExpression) != nil else {
+        let octet = "(0|[1-9][0-9]{0,2})"
+        guard value.range(of: "^\(octet)(\\.\(octet)){3}/(0|[1-9][0-9]?)$", options: .regularExpression) != nil else {
             return false
         }
         let parts = value.split(separator: "/")
@@ -184,11 +221,9 @@ struct VPNServer: Codable, Identifiable, Hashable {
         return parts[0].split(separator: ".").allSatisfy { Int($0).map { (0...255).contains($0) } ?? false }
     }
 
+    // == is synthesized over every field, so an edited profile is a different value and
+    // SwiftUI redraws it. Hashing the id alone stays consistent (equal values share the id).
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
-    }
-
-    static func == (lhs: VPNServer, rhs: VPNServer) -> Bool {
-        lhs.id == rhs.id
     }
 }

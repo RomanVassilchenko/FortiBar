@@ -1,5 +1,29 @@
 # Changelog
 
+## v1.6.0
+
+### Security
+- Line breaks and control characters in a server's host, user, password or certificate are rejected (app, settings editor and CLI): they could add options to the config that openfortivpn reads as root
+- The CLI talks to the app over a private Unix socket (owner-only, peer uid checked) instead of distributed notifications, which any process in the login session could post
+- The temporary config with the password is created with owner-only permissions or the connection fails; the server editor no longer loads the saved password into its field
+
+### Added
+- A tunnel that ignores SIGTERM is now force-stopped (SIGKILL of openfortivpn and pppd) through a narrow sudoers rule. Existing installs show **Update…** in Settings → Permission (or run `fortibar permission update`)
+
+### Fixed
+- Lost trust-on-first-use certificate digests and failure messages when openfortivpn's output arrived in pieces or the process exited quickly
+- Disconnect no longer triggers a reconnect; a memory leak per connection is gone
+- Auto-connect skips servers without a saved password and takes the next one in single-connection mode
+- Config: atomic writes, an unreadable file is kept as `config.json.invalid` instead of being replaced, no races between app and CLI; servers without an `id` keep a stable one
+- A certificate pinned while the server editor is open survives saving it; a legacy plaintext password moves to the Keychain
+- Settings no longer rewrite the config or re-register launch at login on open; the log Clear button stays cleared
+- CLI: unknown flags, bad `--timeout` / `-n` values and extra arguments are errors; saves are verified; `remove` no longer loses the Keychain password when saving fails
+- A second app instance waits for the first (for example during a Homebrew upgrade) instead of fighting over tunnels
+- Old logs are no longer deleted when they were not migrated
+
+### Changed
+- `fortibar status --json` exits 3 when the app is not running, like `status`
+
 ## v1.5.1
 
 ### Added

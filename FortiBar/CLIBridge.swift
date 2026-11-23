@@ -1,12 +1,14 @@
 import Foundation
 import Combine
+import os
+
+private let log = Logger(subsystem: "com.romanvassilchenko.FortiBar", category: "cli")
 
 /// Shared between the app and the `fortibar` command line tool.
 ///
-/// The running app publishes its tunnels to `state.json` and listens for commands
-/// as distributed notifications, so the CLI never touches the Keychain or root.
+/// The running app publishes its tunnels to `state.json` and takes commands on a private
+/// Unix domain socket (see CLISocket.swift), so the CLI never touches the Keychain or root.
 enum CLIProtocol {
-    static let commandNotification = Notification.Name("com.romanvassilchenko.FortiBar.cli.command")
     static let bundleIdentifier = "com.romanvassilchenko.FortiBar"
 
     static var stateURL: URL {
@@ -18,7 +20,7 @@ enum CLIProtocol {
             .appendingPathComponent("Library/Logs/FortiBar/fortibar.log")
     }
 
-    enum Action: String {
+    enum Action: String, Codable {
         case connect, disconnect, disconnectAll = "disconnect-all", reloadConfig = "reload-config"
     }
 
@@ -76,19 +78,24 @@ extension VPNState {
 final class CLIBridge {
     private let vpn: VPNManager
     private var cancellables: Set<AnyCancellable> = []
-    private var observer: NSObjectProtocol?
+    private var server: CLISocketServer?
 
     init(vpn: VPNManager) {
         self.vpn = vpn
     }
 
     func start() {
-        observer = DistributedNotificationCenter.default().addObserver(
-            forName: CLIProtocol.commandNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            self?.handle(notification.userInfo ?? [:])
+        // Before state.json: the CLI takes that file as the sign that commands are accepted
+        let server = CLISocketServer(path: CLIProtocol.socketPath, handlerQueue: .main) { [weak self] request in
+            MainActor.assumeIsolated {
+                self?.execute(request) ?? .failure("FortiBar is quitting")
+            }
+        }
+        do {
+            try server.start()
+            self.server = server
+        } catch {
+            log.error("CLI command socket unavailable: \(String(describing: error), privacy: .public)")
         }
 
         // @Published fires before the value changes: hop to the next main loop turn
@@ -107,15 +114,17 @@ final class CLIBridge {
     }
 
     /// Called on quit: no state file means "app not running" to the CLI.
+    /// Only reached by the instance that started the bridge (see AppDelegate).
     func stop() {
+        server?.stop()
+        server = nil
         try? FileManager.default.removeItem(at: CLIProtocol.stateURL)
     }
 
-    private func handle(_ info: [AnyHashable: Any]) {
-        guard let actionName = info["action"] as? String,
-              let action = CLIProtocol.Action(rawValue: actionName) else { return }
-
-        switch action {
+    /// Runs one CLI command on the main queue. The outcome of connect and disconnect shows
+    /// up in state.json; the response only says whether the command was accepted.
+    private func execute(_ request: CLIProtocol.Request) -> CLIProtocol.Response {
+        switch request.action {
         case .reloadConfig:
             // The CLI edited config.json: pick it up so the app does not overwrite it later
             ConfigManager.shared.reload()
@@ -124,18 +133,30 @@ final class CLIBridge {
         case .disconnectAll:
             vpn.disconnectAll()
         case .disconnect:
-            if let id = info["server"] as? String {
-                vpn.disconnect(serverID: id)
-            }
+            guard let id = request.server, !id.isEmpty else { return .failure("disconnect needs a server id") }
+            vpn.disconnect(serverID: id)
         case .connect:
-            guard let id = info["server"] as? String,
-                  let server = ConfigManager.shared.config.servers.first(where: { $0.id == id }) else { return }
-            guard let password = KeychainHelper.read(for: server.id), !password.isEmpty else {
-                vpn.reportError(server: server, reason: "No saved password: set it in Settings › Servers")
-                return
+            guard let id = request.server,
+                  ConfigManager.shared.config.servers.contains(where: { $0.id == id }) else {
+                return .failure("unknown server id \"\(request.server ?? "")\"")
             }
-            vpn.connect(to: server, password: password)
+            // The Keychain can block (e.g. an access prompt): read it off the main thread
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                let password = KeychainHelper.read(for: id)
+                DispatchQueue.main.async {
+                    // The profile may have been edited or removed meanwhile; connect() itself
+                    // ignores a server that is already connecting or connected
+                    guard let self = self,
+                          let server = ConfigManager.shared.config.servers.first(where: { $0.id == id }) else { return }
+                    guard let password = password, !password.isEmpty else {
+                        self.vpn.reportError(server: server, reason: "No saved password: set it in Settings › Servers")
+                        return
+                    }
+                    self.vpn.connect(to: server, password: password)
+                }
+            }
         }
+        return .success
     }
 
     private func writeState() {
@@ -185,8 +206,9 @@ final class LogFile {
             }
             guard let handle = try? FileHandle(forWritingTo: url) else { return }
             defer { try? handle.close() }
-            handle.seekToEndOfFile()
-            handle.write(Data((line + "\n").utf8))
+            // Throwing API: the legacy write(_:) raises an Objective-C exception (crash) on e.g. a full disk
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: Data((line + "\n").utf8))
         }
     }
 }

@@ -35,7 +35,15 @@ enum CommandLineTool {
             return status(json: json)
         case "connect", "up":
             let noWait = takeFlag("--no-wait", from: &args)
-            let timeout = takeOption("--timeout", from: &args).flatMap(Double.init) ?? 45
+            var timeout: TimeInterval = 45
+            if let text = takeOption("--timeout", from: &args) {
+                // NaN, inf or huge values would trap in Int(timeout) below
+                guard let value = Double(text), value.isFinite, value > 0, value <= 86_400 else {
+                    return usage("--timeout takes a number of seconds (up to 86400)")
+                }
+                timeout = value
+            }
+            if args.contains("--timeout") { return usage("--timeout needs a value") }
             guard let query = args.first else { return usage("connect needs a server name") }
             return connect(query, wait: !noWait, timeout: timeout)
         case "disconnect", "down":
@@ -58,13 +66,13 @@ enum CommandLineTool {
         case "logs", "log":
             let follow = takeFlag("-f", from: &args) || takeFlag("--follow", from: &args)
             let lines = takeOption("-n", from: &args) ?? "50"
-            return logs(lines: lines, follow: follow)
+            guard let count = Int(lines), count >= 0, !args.contains("-n") else {
+                return usage("-n takes a number of lines")
+            }
+            return logs(lines: String(count), follow: follow)
         case "version", "--version":
             // Called through a symlink, Bundle.main does not see the app bundle: resolve it
-            var size = UInt32(PATH_MAX)
-            var buffer = [CChar](repeating: 0, count: Int(size))
-            _ = _NSGetExecutablePath(&buffer, &size)
-            let executable = URL(fileURLWithPath: String(cString: buffer)).resolvingSymlinksInPath()
+            let executable = executableURL()
             let bundle = Bundle(url: executable.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()) ?? .main
             let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
             print("fortibar \(version)")
@@ -134,8 +142,12 @@ enum CommandLineTool {
 
     static func status(json: Bool) -> Int32 {
         guard let state = runningState() else {
-            if json { return printJSON(["running": false, "tunnels": []] as [String: Any]) }
-            print("FortiBar is not running")
+            // Same exit code in both modes, so scripts can test `status --json` too
+            if json {
+                _ = printJSON(["running": false, "tunnels": []] as [String: Any])
+            } else {
+                print("FortiBar is not running")
+            }
             return 3
         }
 
@@ -177,7 +189,7 @@ enum CommandLineTool {
         }
 
         let requested = Date()
-        send(.connect, server: server.id)
+        if let code = send(.connect, server: server.id, startApp: true) { return code }
         guard wait else { return 0 }
 
         var seen = false
@@ -222,10 +234,10 @@ enum CommandLineTool {
                 return 0
             }
             targets = [server.id]
-            send(.disconnect, server: server.id)
+            if let code = send(.disconnect, server: server.id) { return code }
         } else {
             targets = state.tunnels.map(\.id)
-            send(.disconnectAll, server: nil)
+            if let code = send(.disconnectAll, server: nil) { return code }
         }
         guard wait else { return 0 }
 
@@ -265,7 +277,25 @@ enum CommandLineTool {
               let state = try? CLIProtocol.decoder().decode(CLIProtocol.State.self, from: data) else { return nil }
         // A stale file from a crashed app: its pid is gone (EPERM would mean it exists)
         guard kill(state.pid, 0) == 0 || errno == EPERM else { return nil }
+        // ...or the pid was reused by an unrelated process
+        guard isFortiBarProcess(state.pid) else { return nil }
         return state
+    }
+
+    /// Resolved path of this executable (the CLI and the app are the same binary).
+    static func executableURL() -> URL {
+        var size = UInt32(PATH_MAX)
+        var buffer = [CChar](repeating: 0, count: Int(size))
+        _ = _NSGetExecutablePath(&buffer, &size)
+        return URL(fileURLWithPath: String(cString: buffer)).resolvingSymlinksInPath()
+    }
+
+    /// True when `pid` runs an executable with this one's name; true as well when its path cannot be read.
+    static func isFortiBarProcess(_ pid: Int32) -> Bool {
+        var buffer = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
+        guard proc_pidpath(pid, &buffer, UInt32(buffer.count)) > 0 else { return true }
+        let path = URL(fileURLWithPath: String(cString: buffer))
+        return path.lastPathComponent == executableURL().lastPathComponent
     }
 
     /// Starts the app in the background when it is not running and waits for its state.
@@ -275,14 +305,16 @@ enum CommandLineTool {
         let open = Process()
         open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
         open.arguments = ["-g", "-b", CLIProtocol.bundleIdentifier]
-        try? open.run()
+        // App not registered with Launch Services (or not installed): fail right away
+        do { try open.run() } catch { return nil }
         open.waitUntilExit()
+        guard open.terminationStatus == 0 else { return nil }
 
         let deadline = Date().addingTimeInterval(15)
         while Date() < deadline {
             Thread.sleep(forTimeInterval: 0.3)
             if let state = runningState() {
-                // Let the app finish wiring its observers
+                // Let the app finish starting up (send() retries if its socket is not up yet)
                 Thread.sleep(forTimeInterval: 0.5)
                 return state
             }
@@ -290,20 +322,55 @@ enum CommandLineTool {
         return nil
     }
 
-    static func send(_ action: CLIProtocol.Action, server: String?) {
-        var info: [String: String] = ["action": action.rawValue]
-        info["server"] = server
-        DistributedNotificationCenter.default().postNotificationName(
-            CLIProtocol.commandNotification,
-            object: nil,
-            userInfo: info,
-            deliverImmediately: true
-        )
+    /// Sends one command to the app over its socket. Returns nil when the app accepted it,
+    /// otherwise the exit code (after printing why). With `startApp`, an app that is not
+    /// running is launched; either way an app that is still starting gets a few seconds.
+    static func send(_ action: CLIProtocol.Action, server: String?, startApp: Bool = false) -> Int32? {
+        let request = CLIProtocol.Request(action: action, server: server)
+        let path = CLIProtocol.socketPath
+        var launched = false
+        let deadline = Date().addingTimeInterval(10)
+        while true {
+            switch CLISocketClient.send(request, path: path) {
+            case .success(let response):
+                guard response.ok else {
+                    printError(response.error ?? "FortiBar refused the command")
+                    return 1
+                }
+                return nil
+            case .failure(.failed(let message)):
+                printError(message)
+                return 1
+            case .failure(.unavailable):
+                if runningState() == nil {
+                    guard startApp, !launched else {
+                        printError("FortiBar is not running")
+                        return 3
+                    }
+                    launched = true
+                    guard ensureRunning() != nil else {
+                        printError("could not start FortiBar")
+                        return 3
+                    }
+                    continue
+                }
+                guard Date() < deadline else {
+                    printError("FortiBar is running but does not accept commands (\(path))")
+                    return 3
+                }
+                Thread.sleep(forTimeInterval: 0.3)
+            }
+        }
     }
 
     /// Matches by id, exact name, then unique case-insensitive name prefix.
     static func resolve(_ query: String) -> VPNServer? {
         let servers = ConfigManager.shared.config.servers
+        // An empty prefix would match every server (and pick the only one)
+        guard !query.trimmingCharacters(in: .whitespaces).isEmpty else {
+            printError("empty server name")
+            return nil
+        }
         if let server = servers.first(where: { $0.id == query })
             ?? servers.first(where: { $0.name.caseInsensitiveCompare(query) == .orderedSame }) {
             return server
@@ -366,7 +433,8 @@ enum CommandLineTool {
         usage: fortibar <command> [options]
 
           list [--json]                       servers and their state
-          status [--json]                     active tunnels (time, IP, interface, routes)
+          status [--json]                     active tunnels (time, IP, interface, routes);
+                                              exits 3 when the app is not running
           connect <server> [--no-wait] [--timeout s]
                                               connect; waits until the tunnel is up
           disconnect <server> | --all [--no-wait]
@@ -394,7 +462,8 @@ enum CommandLineTool {
 
         <server> is a name, a unique name prefix (case-insensitive) or an id.
         Commands run through the FortiBar app, which is started in the background if needed.
-        Exit codes: 0 ok, 1 failed, 2 usage / unknown server, 3 app not running.
+        Exit codes: 0 ok, 1 failed, 2 usage / unknown server, 3 app not running
+        (status and status --json; connect when the app cannot be started).
         """)
     }
 }

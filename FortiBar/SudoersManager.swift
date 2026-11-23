@@ -12,6 +12,9 @@ enum SudoersStatus: Equatable {
     case outdated
     /// openfortivpn is allowed, but a server uses static routes and /sbin/route is not
     case routesMissing
+    /// openfortivpn is allowed, but the force-stop rule (/bin/kill -KILL) is not:
+    /// a hung tunnel cannot be stopped. Rules installed before 1.6 lack it.
+    case forceStopMissing
     /// sudo would ask for a password
     case missing
     case binaryNotFound
@@ -50,6 +53,17 @@ final class SudoersManager {
     /// Argument wildcards keep the rule readable; values are CIDR-checked before use.
     static let routeCommands = ["add", "change", "delete"].map { "/sbin/route -n \($0) -net * -interface ppp*" }
 
+    /// Last resort for a hung openfortivpn/pppd that ignores SIGTERM: SIGKILL one pid as root.
+    /// One pattern per pid length (2 to 5 digits, macOS pids stay below 99999) instead of
+    /// `[0-9]*`: a sudoers `*` also matches spaces, so `kill -KILL 1 -1` (every process) would pass.
+    /// Pids 1–9 (launchd and early daemons) never match.
+    static let forceStopCommands = (1...4).map { extraDigits in
+        "/bin/kill -KILL [1-9]" + String(repeating: "[0-9]", count: extraDigits)
+    }
+
+    /// A pid that can never exist (PID_MAX is 99999, pids stay below it) but matches the rule.
+    static let forceStopProbePID: Int32 = 99_999
+
     /// Blocking: runs sudo, call it off the main thread.
     /// `needsRoutes`: some server installs static routes, so /sbin/route must be allowed too.
     func status(for binaryPath: String?, needsRoutes: Bool = ConfigManager.shared.config.needsRoutePermission) -> SudoersStatus {
@@ -61,6 +75,10 @@ final class SudoersManager {
 
         if allowed && needsRoutes && !routesAllowed() {
             return .routesMissing
+        }
+        // The legacy rule never had it, and its status already asks for an update
+        if allowed && !legacyInstalled && !forceStopAllowed() {
+            return .forceStopMissing
         }
 
         switch (allowed, ruleInstalled) {
@@ -85,13 +103,38 @@ final class SudoersManager {
         return !Self.needsPassword(result.output)
     }
 
+    /// SIGKILLs a pid that cannot exist: sudo either refuses or runs kill, which reports
+    /// "No such process". Nothing is ever killed.
+    func forceStopAllowed() -> Bool {
+        let result = run("/usr/bin/sudo", ["-n", "/bin/kill", "-KILL", String(Self.forceStopProbePID)])
+        return Self.forceStopProbeSucceeded(status: result.status, output: result.output)
+    }
+
+    /// Only positive evidence counts: kill ran (and found no such process), sudo did not refuse.
+    static func forceStopProbeSucceeded(status: Int32, output: String) -> Bool {
+        guard !needsPassword(output) else { return false }
+        return status == 0 || output.contains("No such process")
+    }
+
+    /// `sudo -n /bin/kill -KILL <pid>` arguments, or nil if the pid is outside what the rule allows
+    /// (10...99998): never build a kill command from anything else.
+    static func forceStopArguments(pid: Int32) -> [String]? {
+        guard pid >= 10, pid < forceStopProbePID else { return nil }
+        return ["-n", "/bin/kill", "-KILL", String(pid)]
+    }
+
     static func needsPassword(_ sudoOutput: String) -> Bool {
         sudoOutput.contains("a password is required") || sudoOutput.contains("may not run sudo")
+            // A user with only the openfortivpn rule is refused outright for other commands
+            || sudoOutput.contains("is not allowed to execute")
     }
 
     /// The sudoers file content written by `install`.
     static func ruleContent(user: String, binaryPath: String, includeRoutes: Bool) -> [String] {
-        var lines = ["\(user) ALL = (root) NOPASSWD: \(binaryPath)"]
+        var lines = [
+            "\(user) ALL = (root) NOPASSWD: \(binaryPath)",
+            "\(user) ALL = (root) NOPASSWD: " + forceStopCommands.joined(separator: ", "),
+        ]
         if includeRoutes {
             lines.append("\(user) ALL = (root) NOPASSWD: " + routeCommands.joined(separator: ", "))
         }
@@ -123,7 +166,7 @@ final class SudoersManager {
         r=$?; /bin/rm -f "$t"; exit $r
         """
 
-        try runAsAdministrator(script, prompt: "FortiBar wants to allow openfortivpn to start the VPN tunnel without asking for your password.")
+        try runAsAdministrator(script, prompt: "FortiBar wants to allow openfortivpn to start the VPN tunnel (and to force-stop it if it hangs) without asking for your password.")
     }
 
     /// Blocking: shows the macOS administrator password dialog.

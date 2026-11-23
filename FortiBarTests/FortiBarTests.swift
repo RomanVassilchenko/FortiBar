@@ -60,9 +60,48 @@ struct FailureParsingTests {
 struct SudoersAndRoutesTests {
     @Test func ruleAllowsOnlyTheBinaryUnlessRoutesAreNeeded() {
         let plain = SudoersManager.ruleContent(user: "me", binaryPath: "/opt/homebrew/bin/openfortivpn", includeRoutes: false)
-        #expect(plain == ["me ALL = (root) NOPASSWD: /opt/homebrew/bin/openfortivpn"])
+        #expect(plain == [
+            "me ALL = (root) NOPASSWD: /opt/homebrew/bin/openfortivpn",
+            "me ALL = (root) NOPASSWD: /bin/kill -KILL [1-9][0-9], /bin/kill -KILL [1-9][0-9][0-9], "
+                + "/bin/kill -KILL [1-9][0-9][0-9][0-9], /bin/kill -KILL [1-9][0-9][0-9][0-9][0-9]",
+        ])
         let withRoutes = SudoersManager.ruleContent(user: "me", binaryPath: "/opt/homebrew/bin/openfortivpn", includeRoutes: true)
-        #expect(withRoutes.count == 2 && withRoutes[1].contains("/sbin/route -n add -net * -interface ppp*"))
+        #expect(withRoutes.count == 3 && withRoutes[2].contains("/sbin/route -n add -net * -interface ppp*"))
+    }
+
+    @Test func forceStopRuleHasNoSpaceCrossingWildcard() {
+        // A sudoers "*" also matches spaces: "kill -KILL 1 -1" would kill every process
+        for command in SudoersManager.forceStopCommands {
+            #expect(command.hasPrefix("/bin/kill -KILL [1-9]"))
+            #expect(!command.contains("*") && !command.contains("?"))
+        }
+        // The probe pid matches the longest pattern
+        #expect(String(SudoersManager.forceStopProbePID).count == SudoersManager.forceStopCommands.count + 1)
+    }
+
+    @Test func forceStopProbeClassification() {
+        #expect(SudoersManager.forceStopProbeSucceeded(status: 1, output: "kill: 99999: No such process\n"))
+        #expect(SudoersManager.forceStopProbeSucceeded(status: 0, output: ""))
+        #expect(!SudoersManager.forceStopProbeSucceeded(status: 1, output: "sudo: a password is required\n"))
+        #expect(!SudoersManager.forceStopProbeSucceeded(status: 1, output: "Sorry, user me is not allowed to execute '/bin/kill -KILL 99999' as root on mac.\n"))
+        #expect(!SudoersManager.forceStopProbeSucceeded(status: 1, output: "sudo: me may not run sudo on mac\n"))
+        // Unknown failures (e.g. sudo missing) are not evidence that the rule works
+        #expect(!SudoersManager.forceStopProbeSucceeded(status: -1, output: "The file doesn't exist."))
+    }
+
+    @Test func forceStopArgumentsOnlyForAllowedPIDs() {
+        #expect(SudoersManager.forceStopArguments(pid: 4242) == ["-n", "/bin/kill", "-KILL", "4242"])
+        #expect(SudoersManager.forceStopArguments(pid: 10) != nil)
+        #expect(SudoersManager.forceStopArguments(pid: 99_998) != nil)
+        for pid: Int32 in [-1, 0, 1, 9, 99_999, 100_000, .max] {
+            #expect(SudoersManager.forceStopArguments(pid: pid) == nil)
+        }
+    }
+
+    @Test func parsesPgrepOutput() {
+        #expect(VPNManager.parsePIDs("123\n456\n") == [123, 456])
+        #expect(VPNManager.parsePIDs("") == [])
+        #expect(VPNManager.parsePIDs(" 77 \n-1\n0\nabc\n12 34\n٣\n99999999999\n") == [77])
     }
 
     @Test func rulePathUsesTheNewName() {
@@ -75,6 +114,14 @@ struct SudoersAndRoutesTests {
         #expect(!VPNServer.isValidCIDR("10.20.30.0/33"))
         #expect(!VPNServer.isValidCIDR("300.1.1.1/8"))
         #expect(!VPNServer.isValidCIDR("10.0.0.0/8; rm -rf /"))
+        #expect(VPNServer.isValidCIDR("0.0.0.0/0"))
+    }
+
+    @Test func cidrRejectsOctalLookingAndNonASCIIDigits() {
+        // inet_aton would read 010 as 8
+        #expect(!VPNServer.isValidCIDR("010.0.0.0/8"))
+        #expect(!VPNServer.isValidCIDR("10.0.0.0/08"))
+        #expect(!VPNServer.isValidCIDR("\u{0661}0.0.0.0/8"))
     }
 }
 
@@ -93,6 +140,61 @@ struct ConfigCodingTests {
 
         let encoded = try #require(String(data: JSONEncoder().encode(config), encoding: .utf8))
         #expect(!encoded.contains("menu_bar_icon"))
+    }
+
+    @Test func serverWithoutIDGetsTheSameIDOnEveryLoad() throws {
+        let json = Data(#"{"servers":[{"name":"Office","host":"vpn.example.com","username":"me"}]}"#.utf8)
+        let first = try JSONDecoder().decode(AppConfig.self, from: json)
+        let second = try JSONDecoder().decode(AppConfig.self, from: json)
+        #expect(first.servers[0].id == second.servers[0].id)
+        #expect(UUID(uuidString: first.servers[0].id) != nil)
+    }
+
+    @Test func duplicateIDsAreMadeUnique() throws {
+        let json = Data("""
+        {"servers":[{"id":"a","name":"One","host":"h1","username":"u"},
+                    {"id":"a","name":"Two","host":"h2","username":"u"},
+                    {"name":"Same","host":"h","username":"u"},
+                    {"name":"Same","host":"h","username":"u"}]}
+        """.utf8)
+        let ids = try JSONDecoder().decode(AppConfig.self, from: json).servers.map(\.id)
+        #expect(ids[0] == "a" && ids[1] == "a-2")
+        #expect(Set(ids).count == 4)
+    }
+}
+
+struct CLIParsingTests {
+    @Test func parsesValuesFlagsAndPositionals() throws {
+        let options = try #require(CommandLineTool.parseOptions(
+            ["Office", "--host=vpn.example.com", "--username", "me", "--route", "10.0.0.0/8", "--route", "10.1.0.0/16", "-y"]))
+        #expect(options.positional == ["Office"])
+        #expect(options.value("--host") == "vpn.example.com" && options.value("--user") == "me")
+        #expect(options.all("--route") == ["10.0.0.0/8", "10.1.0.0/16"])
+        #expect(options.has("-y"))
+    }
+
+    @Test func rejectsUnknownFlagsAndMissingValues() {
+        #expect(CommandLineTool.parseOptions(["x", "--auto-conect"]) == nil)
+        #expect(CommandLineTool.parseOptions(["x", "--host"]) == nil)
+        #expect(CommandLineTool.parseOptions(["x", "--host", "--user", "me"]) == nil)
+        #expect(CommandLineTool.parseOptions(["x", "--auto-connect=yes"]) == nil)
+    }
+
+    @Test func validationRejectsLineBreaksThatWouldInjectOpenfortivpnOptions() {
+        func server(host: String = "vpn.example.com", user: String = "me", cert: String? = nil) -> VPNServer {
+            VPNServer(name: "Office", host: host, port: 443, username: user, password: nil, trustedCert: cert)
+        }
+        #expect(CommandLineTool.validate(server()) == nil)
+        #expect(CommandLineTool.validate(server(user: "me\npppd-plugin = /tmp/x.so")) != nil)
+        #expect(CommandLineTool.validate(server(host: "vpn\rexample")) != nil)
+        #expect(CommandLineTool.validate(server(cert: "abc\nset-dns = 0")) != nil)
+    }
+
+    @Test func editKeepsAnIconThatIsNoLongerOffered() {
+        let old = VPNServer(name: "Office", host: "h", port: 443, username: "u", password: nil,
+                            trustedCert: nil, icon: "globe", id: "id-1")
+        #expect(CommandLineTool.validate(old, previous: old) == nil)
+        #expect(CommandLineTool.validate(old) != nil)
     }
 }
 
@@ -149,6 +251,41 @@ struct MigrationTests {
 
         #expect(try String(contentsOf: newLog, encoding: .utf8) == "line")
         #expect(!FileManager.default.fileExists(atPath: old.path))
+    }
+
+    @Test func oldLogIsKeptWhenANewOneAlreadyExists() throws {
+        let root = try makeTempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let old = root.appendingPathComponent("OldLogs")
+        let newLog = root.appendingPathComponent("NewLogs/new.log")
+        for folder in [old, newLog.deletingLastPathComponent()] {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        }
+        try Data("old".utf8).write(to: old.appendingPathComponent("openfortimac.log"))
+        try Data("old rotated".utf8).write(to: old.appendingPathComponent("openfortimac.log.1"))
+        try Data("new".utf8).write(to: newLog)
+
+        LegacyMigration.migrateLogs(from: old, to: newLog)
+
+        #expect(try String(contentsOf: newLog, encoding: .utf8) == "new")
+        #expect(try String(contentsOf: URL(fileURLWithPath: newLog.path + ".1"), encoding: .utf8) == "old rotated")
+        #expect(try String(contentsOf: old.appendingPathComponent("openfortimac.log"), encoding: .utf8) == "old")
+    }
+}
+
+struct ServerEqualityTests {
+    @Test func editedProfileIsNotEqualButHashesLikeTheOriginal() {
+        let server = VPNServer(name: "Office", host: "vpn.example.com", port: 443, username: "me",
+                               password: nil, trustedCert: nil, id: "id-1")
+        let pinned = server.pinning(certificate: String(repeating: "a", count: 64))
+        #expect(server == server)
+        #expect(pinned != server)
+        #expect(pinned.hashValue == server.hashValue)
+        #expect(Set([server, pinned]).count == 2)
+
+        let other = VPNServer(name: "Office", host: "vpn.example.com", port: 443, username: "me",
+                              password: nil, trustedCert: nil, id: "id-2")
+        #expect(other != server)
     }
 }
 
