@@ -1,4 +1,6 @@
-# FortiBar
+<p align="center"><img src="docs/assets/icon.png" width="128" height="128" alt="FortiBar app icon: a white F with a green dot on a deep blue background"></p>
+
+<h1 align="center">FortiBar</h1>
 ![macOS 13+](https://img.shields.io/badge/macOS-13%2B-blue)
 ![Swift](https://img.shields.io/badge/Swift-5-orange)
 ![License: GPL v3](https://img.shields.io/badge/license-GPLv3-green)
