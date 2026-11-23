@@ -64,6 +64,8 @@ struct MenuPanelView: View {
             return banner("Update the permission rule", "One-time step: the sudo rule got a new name.", "Update")
         case .routesMissing:
             return banner("Static routes need permission", "Update the rule so routes can be added.", "Update")
+        case .forceStopMissing:
+            return banner("Update the permission rule", "Needed to stop a tunnel that hangs.", "Update")
         case .outdated:
             return banner("Permission points to another openfortivpn", "Update the rule after moving openfortivpn.", "Update")
         case .binaryNotFound:
@@ -233,6 +235,8 @@ private struct TunnelCard: View {
         }
         .frame(width: 36, height: 36)
         .glassSurface(in: Circle(), tint: tint)
+        // Decorative: the name and status line next to it carry the state
+        .accessibilityHidden(true)
     }
 
     /// Short facts side by side, routes (possibly long) on their own line.
@@ -385,6 +389,16 @@ private struct PanelServerRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
+        // The action is only shown on hover: tell VoiceOver what a click does
+        .accessibilityHint(actionHint)
+    }
+
+    private var actionHint: String {
+        switch tunnel?.state {
+        case .none: return hasPassword ? "Connects" : "Opens the server editor to add the password"
+        case .connecting, .reconnecting: return "Cancels the connection"
+        default: return "Disconnects"
+        }
     }
 
     @ViewBuilder

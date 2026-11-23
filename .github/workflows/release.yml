@@ -127,17 +127,15 @@ jobs:
           fi
 
       - name: Import signing certificate
+        # Only releases get the certificate: pull request builds are ad-hoc signed
+        if: env.RELEASE == 'true'
         env:
           P12_BASE64: ${{ secrets.SIGNING_CERT_P12 }}
           P12_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
         run: |
           if [ -z "$P12_BASE64" ]; then
-            if [ "$RELEASE" = "true" ]; then
-              echo "::error::SIGNING_CERT_P12 is not set: releases must keep the stable signing identity"
-              exit 1
-            fi
-            echo "::warning::No signing certificate (e.g. pull request from a fork): ad-hoc build"
-            exit 0
+            echo "::error::SIGNING_CERT_P12 is not set: releases must keep the stable signing identity"
+            exit 1
           fi
 
           # Throwaway keychain, unlocked for the whole job so codesign never prompts
@@ -228,7 +226,11 @@ jobs:
           fi
 
           ANALYSIS_ID=$(curl -sS --fail-with-body -X POST "https://www.virustotal.com/api/v3/files" \
-            -H "x-apikey: $VT_API_KEY" -F "file=@$DMG" | jq -r '.data.id')
+            -H "x-apikey: $VT_API_KEY" -F "file=@$DMG" | jq -r '.data.id // empty')
+          if [ -z "$ANALYSIS_ID" ]; then
+            echo "::warning::VirusTotal returned no analysis id"
+            exit 1
+          fi
           LINK="https://www.virustotal.com/gui/file/$SHA256"
           echo "link=$LINK" >> "$GITHUB_OUTPUT"
 
@@ -261,6 +263,13 @@ jobs:
           ATTESTED: ${{ steps.attest.outcome == 'success' }}
         run: |
           RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          # This version's CHANGELOG section, headings promoted one level
+          CHANGES=$(awk -v heading="## v$VERSION" '$0 == heading {found=1; next} found && /^## v/ {exit} found' CHANGELOG.md \
+            | sed 's/^### /## /')
+          if [ -z "${CHANGES//[[:space:]]/}" ]; then
+            echo "::error::CHANGELOG.md has no \"## v$VERSION\" section"
+            exit 1
+          fi
           {
             echo "## Install"
             echo
@@ -271,9 +280,7 @@ jobs:
             echo
             echo "Or install openfortivpn (\`brew install openfortivpn\`) and download \`$DMG\` below. The app is not notarized: on first launch open **System Settings → Privacy & Security** and click **Open Anyway**, then **Settings → Permission → Set Up…**."
             echo
-            # This version's CHANGELOG section, headings promoted one level
-            awk -v heading="## v$VERSION" '$0 == heading {found=1; next} found && /^## v/ {exit} found' CHANGELOG.md \
-              | sed 's/^### /## /'
+            echo "$CHANGES"
             echo
             echo "## Verify this download"
             echo

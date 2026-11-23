@@ -48,7 +48,11 @@ enum LegacyMigration {
 
         do {
             try fm.createDirectory(at: newFolder, withIntermediateDirectories: true)
-            for name in try fm.contentsOfDirectory(atPath: oldFolder.path) where name != "state.json" {
+            // config.json goes last: its presence in the new folder is what marks the migration
+            // as done (see the guard above), so a failure before it is retried on the next launch
+            let names = try fm.contentsOfDirectory(atPath: oldFolder.path)
+                .filter { $0 != "state.json" && $0 != "config.json" } + ["config.json"]
+            for name in names {
                 let destination = newFolder.appendingPathComponent(name)
                 if !fm.fileExists(atPath: destination.path) {
                     try fm.copyItem(at: oldFolder.appendingPathComponent(name), to: destination)
@@ -71,11 +75,16 @@ enum LegacyMigration {
             for suffix in ["", ".1"] {
                 let old = oldFolder.appendingPathComponent(legacyLogName + suffix)
                 let new = URL(fileURLWithPath: newLog.path + suffix)
+                // A log already written under the new name wins: the old one stays where it is
                 if fm.fileExists(atPath: old.path), !fm.fileExists(atPath: new.path) {
                     try fm.moveItem(at: old, to: new)
                 }
             }
-            try fm.removeItem(at: oldFolder)
+            // Only an emptied folder goes: anything not moved (or not ours) is never deleted
+            let leftovers = try fm.contentsOfDirectory(atPath: oldFolder.path).filter { $0 != ".DS_Store" }
+            if leftovers.isEmpty {
+                try fm.removeItem(at: oldFolder)
+            }
         } catch {
             log.error("Log migration failed: \(String(describing: error), privacy: .public)")
         }

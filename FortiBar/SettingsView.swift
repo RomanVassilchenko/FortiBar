@@ -32,7 +32,10 @@ enum ServerEditorRequest: Equatable {
 
 struct SettingsView: View {
     @StateObject private var viewModel = SettingsViewModel()
+    /// The server the editor sheet shows
     @State private var selectedServer: VPNServer?
+    /// List highlight, by id: a VPNServer value changes with every edit or reload
+    @State private var selectedServerID: String?
     @State private var showingAddServer = false
     @State private var showingEditServer = false
     @State private var selectedTab: SettingsTab
@@ -94,6 +97,7 @@ struct SettingsView: View {
                 if let index = viewModel.servers.firstIndex(where: { $0.id == server.id }) {
                     viewModel.deleteServers(at: IndexSet(integer: index))
                     selectedServer = nil
+                    selectedServerID = nil
                 }
             }
         } message: { server in
@@ -163,10 +167,11 @@ struct SettingsView: View {
                 .padding(32)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(selection: $selectedServer) {
+                List(selection: $selectedServerID) {
                     ForEach(viewModel.servers) { server in
                         ServerRowView(
                             server: server,
+                            hasPassword: !viewModel.serversWithoutPassword.contains(server.id),
                             onEdit: {
                                 selectedServer = server
                                 showingEditServer = true
@@ -176,7 +181,7 @@ struct SettingsView: View {
                                 showingDeleteConfirm = true
                             }
                         )
-                        .tag(server)
+                        .tag(server.id)
                         .onTapGesture(count: 2) {
                             selectedServer = server
                             showingEditServer = true
@@ -256,6 +261,8 @@ struct SettingsView: View {
                     .font(.callout)
                 Text("Servers with static routes also need /sbin/route, limited to routes through ppp interfaces.")
                     .font(.callout)
+                Text("The rule also allows /bin/kill -KILL, used only to stop an openfortivpn that hangs on disconnect.")
+                    .font(.callout)
                 Text("Any app running as your user gains the same ability. Remove the rule if you stop using FortiBar.")
                     .font(.callout)
                     .foregroundColor(.secondary)
@@ -267,7 +274,7 @@ struct SettingsView: View {
     private var sudoersActions: AnyView? {
         let busy = viewModel.sudoersBusy
         switch viewModel.sudoersStatus {
-        case .routesMissing:
+        case .routesMissing, .forceStopMissing:
             return AnyView(
                 Button("Update…") { viewModel.setUpSudoers() }
                     .keyboardShortcut(.defaultAction)
@@ -312,7 +319,7 @@ struct SettingsView: View {
     private var sudoersIcon: String {
         switch viewModel.sudoersStatus {
         case .managed, .external: return "checkmark.shield.fill"
-        case .legacyRule, .outdated, .missing, .routesMissing: return "exclamationmark.shield.fill"
+        case .legacyRule, .outdated, .missing, .routesMissing, .forceStopMissing: return "exclamationmark.shield.fill"
         case .binaryNotFound: return "xmark.shield.fill"
         case .none: return "shield"
         }
@@ -321,7 +328,7 @@ struct SettingsView: View {
     private var sudoersTint: Color {
         switch viewModel.sudoersStatus {
         case .managed, .external: return .green
-        case .legacyRule, .outdated, .missing, .routesMissing: return .orange
+        case .legacyRule, .outdated, .missing, .routesMissing, .forceStopMissing: return .orange
         case .binaryNotFound: return .red
         case .none: return .secondary
         }
@@ -336,6 +343,7 @@ struct SettingsView: View {
         case .outdated: return "The rule points to a different openfortivpn"
         case .missing: return "Not set up: connections will fail"
         case .routesMissing: return "Static routes need an updated rule"
+        case .forceStopMissing: return "Update the rule to stop hung tunnels"
         case .binaryNotFound: return "openfortivpn not found"
         }
     }
@@ -350,6 +358,8 @@ struct SettingsView: View {
             return "Not managed by FortiBar (e.g. /etc/sudoers.d/openfortivpn)"
         case .routesMissing:
             return "A server adds static routes: allow /sbin/route for ppp interfaces"
+        case .forceStopMissing:
+            return "Allows /bin/kill -KILL, so an openfortivpn that ignores Disconnect can be stopped"
         case .missing:
             return viewModel.resolvedOpenfortivpnPath
         case .binaryNotFound:
@@ -506,6 +516,8 @@ struct SettingsView: View {
 
 struct ServerRowView: View {
     let server: VPNServer
+    /// Cached by the view model: reading the Keychain in `body` would hit it on every redraw
+    let hasPassword: Bool
     let onEdit: () -> Void
     let onDelete: () -> Void
 
@@ -528,7 +540,7 @@ struct ServerRowView: View {
 
             Spacer(minLength: 8)
 
-            if KeychainHelper.read(for: server.id) == nil {
+            if !hasPassword {
                 Text("No password")
                     .font(.caption)
                     .foregroundStyle(.orange)
@@ -568,6 +580,7 @@ struct ServerEditView: View {
     @State private var port: String = "443"
     @State private var username: String = ""
     @State private var password: String = ""
+    @State private var hasSavedPassword = false
     @State private var trustedCert: String = ""
     @State private var icon: String = VPNServer.defaultIcon
     @State private var noRoutesDNS: Bool = false
@@ -590,7 +603,8 @@ struct ServerEditView: View {
                 TextField("Host", text: $host, prompt: Text("vpn.example.com"))
                 TextField("Port", text: $port, prompt: Text("443"))
                 TextField("Username", text: $username, prompt: Text("Required"))
-                SecureField("Password", text: $password, prompt: Text("Required to connect"))
+                // The saved password stays in the Keychain: an empty field keeps it
+                SecureField("Password", text: $password, prompt: Text(hasSavedPassword ? "Saved in Keychain" : "Required to connect"))
                 LabeledContent("Certificate") {
                     TextField("", text: $trustedCert, prompt: Text("Trusted on first connect"))
                         .labelsHidden()
@@ -661,8 +675,7 @@ struct ServerEditView: View {
                 .keyboardShortcut(.cancelAction)
                 
                 Button(isEditing ? "Save" : "Add") {
-                    if validate() {
-                        saveServer()
+                    if validate(), saveServer() {
                         dismiss()
                     }
                 }
@@ -679,7 +692,8 @@ struct ServerEditView: View {
                 host = server.host
                 port = String(server.port)
                 username = server.username
-                password = KeychainHelper.read(for: server.id) ?? ""
+                // Do not pull the secret into the form: only show whether one is saved
+                hasSavedPassword = !viewModel.serversWithoutPassword.contains(server.id)
                 trustedCert = server.trustedCert ?? ""
                 icon = server.iconName
                 noRoutesDNS = server.noRoutesDNS
@@ -693,35 +707,59 @@ struct ServerEditView: View {
     private func validate() -> Bool {
         validationError = nil
         
+        // Host, username, password and certificate become "key = value" lines of the
+        // openfortivpn config: a line break would inject further options
         let trimmedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedHost.isEmpty || trimmedHost.contains(" ") {
+        if trimmedHost.isEmpty || trimmedHost.contains(where: { $0.isWhitespace }) || Self.hasControlCharacters(trimmedHost) {
             validationError = "Host cannot be empty or contain spaces"
             return false
         }
-        
-        guard let portInt = Int(port), portInt >= 1, portInt <= 65535 else {
+        if trimmedHost.hasPrefix("-") {
+            validationError = "Host cannot start with \"-\""
+            return false
+        }
+
+        guard let portInt = Int(port.trimmingCharacters(in: .whitespaces)), portInt >= 1, portInt <= 65535 else {
             validationError = "Port must be a number between 1 and 65535"
             return false
         }
-        
+
         if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             validationError = "Name cannot be empty"
             return false
         }
-        
-        if username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+
+        let trimmedUser = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedUser.isEmpty {
             validationError = "Username cannot be empty"
             return false
         }
-        
+        if Self.hasControlCharacters(trimmedUser) {
+            validationError = "Username cannot contain line breaks"
+            return false
+        }
+
+        if Self.hasControlCharacters(password) {
+            validationError = "Password cannot contain line breaks"
+            return false
+        }
+
+        let cert = trustedCert.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !cert.isEmpty, cert.range(of: #"^[0-9a-fA-F]{64}$"#, options: .regularExpression) == nil {
+            validationError = "Certificate must be a SHA-256 digest (64 hex digits), or empty"
+            return false
+        }
+
         for cidr in parsedRoutes where !VPNServer.isValidCIDR(cidr) {
             validationError = "Invalid route \"\(cidr)\" — use CIDR notation like 10.20.30.0/24"
             return false
         }
-        
-        host = trimmedHost
-        
+
         return true
+    }
+
+    private static func hasControlCharacters(_ value: String) -> Bool {
+        value.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) || CharacterSet.newlines.contains($0) }
     }
     
     private var parsedRoutes: [String] {
@@ -731,16 +769,37 @@ struct ServerEditView: View {
             .filter { !$0.isEmpty }
     }
     
-    private func saveServer() {
-        let portInt = Int(port) ?? 443
-        
+    /// Returns false (with `validationError` set) when the password could not be stored.
+    private func saveServer() -> Bool {
+        let portInt = Int(port.trimmingCharacters(in: .whitespaces)) ?? 443
+        // The profile as saved now: it may have changed since the editor opened
+        let current = server.flatMap { old in ConfigManager.shared.config.servers.first { $0.id == old.id } }
+
+        // A certificate pinned on first connect while the editor was open is kept, unless
+        // the user changed the field
+        let formCert = trustedCert.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cert: String?
+        if let current = current, formCert == (server?.trustedCert ?? "").trimmingCharacters(in: .whitespacesAndNewlines) {
+            cert = current.trustedCert
+        } else {
+            cert = formCert.isEmpty ? nil : formCert
+        }
+
+        // A plaintext password from an old config file is never written back: it moves to the
+        // Keychain (unless one is saved there or given now) and is dropped from config.json
+        var plaintextPassword = (current ?? server)?.password.flatMap { $0.isEmpty ? nil : $0 }
+        if let plain = plaintextPassword, let id = server?.id,
+           !password.isEmpty || KeychainHelper.read(for: id) != nil || KeychainHelper.save(password: plain, for: id) {
+            plaintextPassword = nil
+        }
+
         let newServer = VPNServer(
             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
-            host: host,
+            host: host.trimmingCharacters(in: .whitespacesAndNewlines),
             port: portInt,
             username: username.trimmingCharacters(in: .whitespacesAndNewlines),
-            password: nil,
-            trustedCert: trustedCert.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : trustedCert.trimmingCharacters(in: .whitespacesAndNewlines),
+            password: plaintextPassword,
+            trustedCert: cert,
             icon: icon,
             id: server?.id,
             noRoutesDNS: noRoutesDNS,
@@ -749,15 +808,17 @@ struct ServerEditView: View {
             autoReconnect: autoReconnect
         )
         
-        if !password.isEmpty {
-            _ = KeychainHelper.save(password: password, for: newServer.id)
+        if !password.isEmpty, !KeychainHelper.save(password: password, for: newServer.id) {
+            validationError = "Could not save the password in the Keychain"
+            return false
         }
-        
+
         if let existingServer = server {
             viewModel.updateServer(existingServer, with: newServer)
         } else {
             viewModel.addServer(newServer)
         }
+        return true
     }
 }
 
@@ -765,29 +826,37 @@ struct ServerEditView: View {
 
 class SettingsViewModel: ObservableObject {
     @Published var servers: [VPNServer] = []
+    /// Servers without a saved password, cached so rows do not hit the Keychain on every redraw
+    @Published private(set) var serversWithoutPassword: Set<String> = []
     @Published var logs: [String] = []
     @Published var refreshID = UUID()
     @Published var openfortivpnPath: String = "" {
         didSet {
-            if oldValue != openfortivpnPath {
+            if !isApplyingStoredValues, oldValue != openfortivpnPath {
                 ConfigManager.shared.saveOpenfortivpnPath(openfortivpnPath)
             }
         }
     }
     @Published var allowMultipleConnections: Bool = false {
         didSet {
-            if oldValue != allowMultipleConnections {
+            if !isApplyingStoredValues, oldValue != allowMultipleConnections {
                 ConfigManager.shared.saveAllowMultipleConnections(allowMultipleConnections)
             }
         }
     }
     @Published var launchAtLogin: Bool = false {
         didSet {
-            if oldValue != launchAtLogin {
+            if !isApplyingStoredValues, oldValue != launchAtLogin {
                 updateLaunchAtLogin()
             }
         }
     }
+
+    /// Set while values are loaded from the config or the system, so the didSet handlers
+    /// do not write them back (or re-register the login item) as if the user changed them
+    private var isApplyingStoredValues = false
+    /// Last log line when the user pressed Clear: only newer lines are shown afterwards
+    private var clearedThroughLine: String?
     
     @Published private(set) var sudoersStatus: SudoersStatus?
     @Published private(set) var sudoersError: String?
@@ -805,8 +874,10 @@ class SettingsViewModel: ObservableObject {
     init() {
         loadServers()
         loadLogs()
-        openfortivpnPath = ConfigManager.shared.config.openfortivpnPath
-        allowMultipleConnections = ConfigManager.shared.config.allowMultipleConnections
+        applyStoredValues {
+            openfortivpnPath = ConfigManager.shared.config.openfortivpnPath
+            allowMultipleConnections = ConfigManager.shared.config.allowMultipleConnections
+        }
         loadLaunchAtLogin()
         refreshSudoersStatus()
 
@@ -828,8 +899,10 @@ class SettingsViewModel: ObservableObject {
             let config = ConfigManager.shared.config
             self.loadServers()
             self.refreshID = UUID()
-            self.allowMultipleConnections = config.allowMultipleConnections
-            self.openfortivpnPath = config.openfortivpnPath
+            self.applyStoredValues {
+                self.allowMultipleConnections = config.allowMultipleConnections
+                self.openfortivpnPath = config.openfortivpnPath
+            }
         }
 
         logsObserver = NotificationCenter.default.addObserver(
@@ -845,16 +918,34 @@ class SettingsViewModel: ObservableObject {
         [logsObserver, reloadObserver].compactMap { $0 }.forEach(NotificationCenter.default.removeObserver)
     }
     
+    private func applyStoredValues(_ apply: () -> Void) {
+        isApplyingStoredValues = true
+        apply()
+        isApplyingStoredValues = false
+    }
+
     func loadServers() {
         servers = []
         servers = ConfigManager.shared.config.servers
+        refreshPasswordState()
     }
-    
+
+    private func refreshPasswordState() {
+        serversWithoutPassword = Set(servers.filter { KeychainHelper.read(for: $0.id)?.isEmpty ?? true }.map(\.id))
+    }
+
     func loadLogs() {
-        logs = VPNManager.shared.connectionLogs
+        let all = VPNManager.shared.connectionLogs
+        // VPNManager keeps the lines; Clear only hides the ones already shown
+        if let marker = clearedThroughLine, let index = all.lastIndex(of: marker) {
+            logs = Array(all[(index + 1)...])
+        } else {
+            logs = all
+        }
     }
-    
+
     func clearLogs() {
+        clearedThroughLine = VPNManager.shared.connectionLogs.last
         logs = []
     }
     
@@ -888,6 +979,7 @@ class SettingsViewModel: ObservableObject {
     
     private func saveConfig() {
         ConfigManager.shared.saveServers(servers)
+        refreshPasswordState()
         NotificationCenter.default.post(name: .configChanged, object: nil)
         // Static routes added or removed change what the sudo rule must allow
         refreshSudoersStatus()
@@ -941,9 +1033,12 @@ class SettingsViewModel: ObservableObject {
     // MARK: - Launch at Login
 
     private func loadLaunchAtLogin() {
-        launchAtLogin = (SMAppService.mainApp.status == .enabled)
+        // Only reflect the current state: registering again on every Settings open is not wanted
+        applyStoredValues {
+            launchAtLogin = (SMAppService.mainApp.status == .enabled)
+        }
     }
-    
+
     private func updateLaunchAtLogin() {
         do {
             if launchAtLogin {
@@ -953,8 +1048,9 @@ class SettingsViewModel: ObservableObject {
             }
         } catch {
             print("Failed to update launch at login: \(error)")
+            // Revert the toggle without calling register/unregister again
             DispatchQueue.main.async { [weak self] in
-                self?.launchAtLogin = (SMAppService.mainApp.status == .enabled)
+                self?.loadLaunchAtLogin()
             }
         }
     }

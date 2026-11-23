@@ -58,11 +58,12 @@ openfortivpn needs root to create the tunnel. On first launch FortiBar opens **S
 
 ```
 YOUR_USERNAME ALL = (root) NOPASSWD: /opt/homebrew/bin/openfortivpn
+YOUR_USERNAME ALL = (root) NOPASSWD: /bin/kill -KILL [1-9][0-9], /bin/kill -KILL [1-9][0-9][0-9], /bin/kill -KILL [1-9][0-9][0-9][0-9], /bin/kill -KILL [1-9][0-9][0-9][0-9][0-9]
 ```
 
-If a server uses static routes, the rule also allows `/sbin/route`, limited to network routes through ppp interfaces. **Remove** in the same place deletes the rule.
+The second line lets FortiBar send `SIGKILL` to a single process id (10 to 99998), used only when openfortivpn hangs and ignores Disconnect for 5 seconds; routes and DNS it set may then stay behind until the next connection. Rules set up by earlier versions lack it: Settings → Permission shows **Update…**. If a server uses static routes, the rule also allows `/sbin/route`, limited to network routes through ppp interfaces. **Remove** in the same place deletes the rule.
 
-> **Security note:** with this rule any process running as your user can start openfortivpn as root without a password, and `/opt/homebrew` is writable by your user. This is the usual trade-off for openfortivpn GUIs; remove the rule if you stop using the app.
+> **Security note:** with this rule any process running as your user can start openfortivpn as root without a password and force-quit almost any process (not launchd), and `/opt/homebrew` is writable by your user. This is the usual trade-off for openfortivpn GUIs; remove the rule if you stop using the app.
 
 <details>
 <summary>Manual setup</summary>
@@ -71,11 +72,14 @@ If a server uses static routes, the rule also allows `/sbin/route`, limited to n
 sudo visudo -f /etc/sudoers.d/fortibar
 ```
 
-Add this line, with your macOS username and the output of `which openfortivpn` (`/opt/homebrew/bin/openfortivpn` on Apple Silicon, `/usr/local/bin/openfortivpn` on Intel):
+Add these lines, with your macOS username and the output of `which openfortivpn` (`/opt/homebrew/bin/openfortivpn` on Apple Silicon, `/usr/local/bin/openfortivpn` on Intel):
 
 ```
 YOUR_USERNAME ALL = (root) NOPASSWD: /opt/homebrew/bin/openfortivpn
+YOUR_USERNAME ALL = (root) NOPASSWD: /bin/kill -KILL [1-9][0-9], /bin/kill -KILL [1-9][0-9][0-9], /bin/kill -KILL [1-9][0-9][0-9][0-9], /bin/kill -KILL [1-9][0-9][0-9][0-9][0-9]
 ```
+
+The second line is optional: without it a hung openfortivpn cannot be force-stopped (Settings shows **Update…**).
 
 For static routes add:
 
@@ -129,7 +133,9 @@ fortibar settings --allow-multiple on
 fortibar permission update        # reinstall the sudo rule (admin dialog)
 ```
 
-`fortibar help` lists every option. Commands run through the app (started in the background if needed), which owns the tunnels, the Keychain and the sudo rule. Passwords are read with `--password` (prompt) or `--password-stdin`, never from arguments.
+`fortibar help` lists every option. Commands run through the app (started in the background if needed), which owns the tunnels, the Keychain and the sudo rule. The CLI talks to it over a Unix socket in `~/Library/Application Support/FortiBar` that only your user can open. Passwords are read with `--password` (prompt) or `--password-stdin`, never from arguments.
+
+Exit codes: `0` success, `1` the command failed (e.g. the tunnel did not come up), `2` usage error or unknown server, `3` FortiBar is not running or could not be started. `status` and `status --json` both exit `3` when the app is not running; `--json` still prints `{"running": false, "tunnels": []}`.
 
 ## Configuration
 

@@ -4,6 +4,9 @@
 
 set -e
 
+# Paths below are relative to the repository root
+cd "$(dirname "$0")"
+
 APP_NAME="FortiBar"
 BUILD_DIR="build"
 DMG_DIR="dmg_contents"
@@ -52,10 +55,10 @@ xcodebuild -project "$APP_NAME.xcodeproj" \
     SWIFT_COMPILATION_MODE=wholemodule \
     build
 
-# Find the built app
-APP_PATH=$(find "$BUILD_DIR" -name "$APP_NAME.app" -type d | head -1)
+# The product, not a copy that may sit elsewhere under the derived data folder
+APP_PATH="$BUILD_DIR/Build/Products/Release/$APP_NAME.app"
 
-if [ -z "$APP_PATH" ]; then
+if [ ! -d "$APP_PATH" ]; then
     echo "❌ Build failed: $APP_NAME.app not found"
     exit 1
 fi
@@ -81,6 +84,8 @@ codesign --verify --deep --strict "$APP_PATH"
 # Create DMG
 echo "💿 Creating DMG..."
 
+# Do not leave the staging folder behind when hdiutil or cp fails
+trap 'rm -rf "$DMG_DIR"' EXIT
 mkdir -p "$DMG_DIR"
 cp -R "$APP_PATH" "$DMG_DIR/"
 ln -s /Applications "$DMG_DIR/Applications"

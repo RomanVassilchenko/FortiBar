@@ -7,7 +7,14 @@ private let log = Logger(subsystem: "com.romanvassilchenko.FortiBar", category: 
 class ConfigManager {
     static let shared = ConfigManager()
     
-    private(set) var config: AppConfig
+    /// Read from background queues too (connection setup, sudo checks): guarded by a lock
+    private let lock = NSLock()
+    private var storedConfig: AppConfig
+
+    private(set) var config: AppConfig {
+        get { lock.lock(); defer { lock.unlock() }; return storedConfig }
+        set { lock.lock(); storedConfig = newValue; lock.unlock() }
+    }
     
     static var configPath: URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -18,7 +25,7 @@ class ConfigManager {
     private init() {
         // Settings and logs written under the previous app name
         LegacyMigration.migrateFiles()
-        config = ConfigManager.loadConfig(from: ConfigManager.configPath)
+        storedConfig = ConfigManager.loadConfig(from: ConfigManager.configPath)
     }
     
     func reload() {
@@ -43,6 +50,10 @@ class ConfigManager {
             return config
         } catch {
             log.error("Error loading config: \(String(describing: error), privacy: .public)")
+            // The next save replaces the file with defaults: keep the unreadable one for recovery
+            let backup = path.appendingPathExtension("invalid")
+            try? FileManager.default.removeItem(at: backup)
+            try? FileManager.default.copyItem(at: path, to: backup)
             return AppConfig.default
         }
     }
@@ -57,7 +68,8 @@ class ConfigManager {
             // No keyEncodingStrategy — we use explicit CodingKeys in Models
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let data = try encoder.encode(newConfig)
-            try data.write(to: path)
+            // Atomic: a crash or a concurrent reader (app vs. CLI) never sees a half-written file
+            try data.write(to: path, options: .atomic)
             self.config = newConfig
             log.info("Config saved to \(path.path, privacy: .public)")
         } catch {
