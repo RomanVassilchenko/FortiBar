@@ -111,11 +111,7 @@ Quitting FortiBar (⌘Q, logout or `SIGTERM`) disconnects every tunnel first, so
 
 ### Command line
 
-The app executable doubles as a command line tool. Homebrew links it as `fortibar`; with the DMG, link it into your `PATH`:
-
-```bash
-ln -s /Applications/FortiBar.app/Contents/MacOS/FortiBar /opt/homebrew/bin/fortibar
-```
+The app executable doubles as a command line tool. Homebrew links it as `fortibar`; with the DMG, open **Settings → General → Command Line Tool → Install…**. It links `fortibar` into `/opt/homebrew/bin`, or into `/usr/local/bin` (asking for your administrator password if needed), and never replaces a file that is not a link. Move FortiBar to Applications first: the link follows the app's location.
 
 ```bash
 fortibar list                     # servers and their state
@@ -192,7 +188,7 @@ brew uninstall --cask --zap fortibar    # also deletes /etc/sudoers.d/fortibar (
 
 Manually:
 
-1. Settings → Permission → **Remove**, then quit FortiBar.
+1. Settings → Permission → **Remove** and, if you installed it, Settings → General → Command Line Tool → **Remove**, then quit FortiBar.
 2. `rm -rf /Applications/FortiBar.app ~/Library/Application\ Support/FortiBar ~/Library/Logs/FortiBar`
 3. Delete the saved passwords in Keychain Access (service `com.romanvassilchenko.FortiBar.vpn`).
 
@@ -200,11 +196,10 @@ Manually:
 
 FortiBar has its own bundle identifier, so it installs next to OpenFortiMac. Quit OpenFortiMac and start FortiBar once; it migrates your data:
 
-- **Servers, settings and logs** move from the `OpenFortiMac` folders in `~/Library/Application Support` and `~/Library/Logs`.
+- **Servers and settings** move from `~/Library/Application Support/OpenFortiMac`.
 - **Passwords** are copied to FortiBar's Keychain service and removed from the old one. If macOS asks whether FortiBar can use the old items, choose **Always Allow** (a refusal is retried on the next launch).
 - **The sudo rule**: open Settings → Permission → **Update…**; one administrator prompt installs `/etc/sudoers.d/fortibar` and removes `/etc/sudoers.d/openfortimac`. A rule you wrote by hand (for example `/etc/sudoers.d/openfortivpn`) is left alone: delete it with `sudo rm`.
 - **Launch at login** must be turned on again in FortiBar's Settings (remove OpenFortiMac from System Settings → General → Login Items).
-- **The CLI** is now `fortibar` instead of `openfortimac`: update symlinks and scripts.
 
 Then delete `/Applications/OpenFortiMac.app`.
 
