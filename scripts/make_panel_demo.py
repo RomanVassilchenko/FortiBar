@@ -2,7 +2,7 @@
 
 Draws every frame as SVG (same layout as MenuPanelView.swift: 320pt wide, 12pt padding,
 36pt glass status puck, glass buttons, flat content), rasterizes them at 2x with Quick Look and assembles the GIF with ffmpeg.
-Story: click the menu bar shield, the panel opens, Connect on "Office VPN", connecting, connected.
+Story: click the menu bar F, the panel opens, Connect on "Office VPN", connecting, connected.
 
 Requires macOS (qlmanage) and ffmpeg (brew install ffmpeg).
 
@@ -204,15 +204,31 @@ def status_glyph(name, cx, cy, color):
     return g + shapes[name] + "</g>"
 
 
+def status_mark(cx, cy, node, color, scale=1.0):
+    """The menu bar mark: a template F of rounded bars whose node carries the
+    state, the same geometry as StatusIcon.swift (18x18 box, y down)."""
+    mark = ("M2 9L2 3.5A1.5 1.5 0 0 1 3.5 2L13.5 2A1.5 1.5 0 0 1 15 3.5A1.5 1.5 0 0 1 13.5 5L5.5 5"
+            "A0.5 0.5 0 0 0 5 5.5L5 7.5A0.5 0.5 0 0 0 5.5 8L7.5 8A1.5 1.5 0 0 1 9 9.5A1.5 1.5 0 0 1 7.5 11L5.5 11"
+            "A0.5 0.5 0 0 0 5 11.5L5 14.5A1.5 1.5 0 0 1 3.5 16A1.5 1.5 0 0 1 2 14.5Z")
+    ring = f'<circle cx="13.5" cy="9.5" r="2.25" fill="none" stroke="{color}" stroke-width="1.5"/>'
+    nodes = {
+        "open": ring,
+        "half": ring + f'<path d="M13.5 6.5A3 3 0 0 0 13.5 12.5Z" fill="{color}"/>',
+        "filled": f'<circle cx="13.5" cy="9.5" r="3" fill="{color}"/>',
+    }
+    return (f'<g transform="translate({cx} {cy}) scale({scale}) translate(-9 -9)" fill="{color}">'
+            f'<path d="{mark}"/>{nodes[node]}</g>')
+
+
 def menubar(state, highlighted):
     out = [f'<rect width="{CANVAS_W}" height="{MENU_H}" fill="#1c1e23"/>',
            f'<path d="M0 {MENU_H - 0.5}H{CANVAS_W}" stroke="rgba(255,255,255,0.07)"/>']
     if highlighted:
         # macOS highlights a status item while its popover is open
         out.append(f'<rect x="{ICON_X - 14}" y="2" width="28" height="20" rx="5" fill="rgba(255,255,255,0.22)"/>')
-    # template shield: follows the menu bar appearance, filled with a check when connected
-    glyph = {"connected": "shield-check", "connecting": "shield-half"}.get(state, "shield")
-    out.append(icon(glyph, ICON_X, ICON_Y, INK, sw=1.3, scale=0.95))
+    # template app mark: the node is an open ring, half-fills while connecting, fills when connected
+    node = {"connected": "filled", "connecting": "half"}.get(state, "open")
+    out.append(status_mark(ICON_X, ICON_Y, node, INK))
     out.append(status_glyph("cloud", ICON_X - 34, ICON_Y, INK))
     out.append(status_glyph("wifi", ICON_X + 34, ICON_Y, INK))
     out.append(status_glyph("battery", ICON_X + 66, ICON_Y, INK))
