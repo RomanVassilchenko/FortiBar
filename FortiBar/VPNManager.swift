@@ -83,6 +83,8 @@ private final class TunnelConnection {
     var tracker = HealthTracker()
     /// Address the health check pings, resolved with the first probe
     var probeTarget: String?
+    /// DNS servers the gateway handed out: probe candidates when the far end of the link is silent
+    var nameservers: [String] = []
     var probing = false
     var nextProbeAt = Date.distantFuture
     /// Probe more often until then (after wake-up or a network change)
@@ -213,13 +215,21 @@ class VPNManager: ObservableObject {
     func connectAutoStartServers() {
         let servers = ConfigManager.shared.config.servers.filter(\.autoConnect)
         let allowMultiple = ConfigManager.shared.config.allowMultipleConnections
-        for server in servers {
-            guard let password = KeychainHelper.read(for: server.id), !password.isEmpty else {
-                addLog(server.name, "Auto-connect skipped: no saved password")
-                continue
+        guard !servers.isEmpty else { return }
+
+        // The Keychain can block (e.g. an access prompt after an update): keep the main thread free
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let passwords = servers.map { ($0, KeychainHelper.read(for: $0.id)) }
+            self?.onMain { manager in
+                for (server, password) in passwords {
+                    guard let password, !password.isEmpty else {
+                        manager.addLog(server.name, "Auto-connect skipped: no saved password")
+                        continue
+                    }
+                    manager.connect(to: server, password: password)
+                    if !allowMultiple { break }
+                }
             }
-            connect(to: server, password: password)
-            if !allowMultiple { break }
         }
     }
 
@@ -426,6 +436,7 @@ class VPNManager: ObservableObject {
 
             if let ip = Self.assignedAddress(in: line) {
                 updateTunnel(server.id) { $0.assignedIP = ip }
+                conn.nameservers = Self.assignedNameservers(in: line)
             }
 
             if let iface = Self.interfaceName(in: line) {
@@ -510,6 +521,17 @@ class VPNManager: ObservableObject {
         guard let open = match.firstIndex(of: "[") else { return nil }
         let ip = match[match.index(after: open)...].trimmingCharacters(in: .whitespaces)
         return ip.isEmpty ? nil : ip
+    }
+
+    /// Extracts the DNS servers from "Got addresses: [10.0.0.5], ns [10.10.5.2, 0.0.0.0], ns_suffix [...]".
+    /// Unset (0.0.0.0) entries are dropped.
+    static func assignedNameservers(in line: String) -> [String] {
+        guard let range = line.range(of: #"\bns \[[^\]]*\]"#, options: .regularExpression),
+              let open = line[range].firstIndex(of: "["), let close = line[range].lastIndex(of: "]") else { return [] }
+        return line[line.index(after: open)..<close]
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { $0 != "0.0.0.0" && TunnelProbe.isValidHost($0) }
     }
 
     /// Extracts the ppp interface from pppd's "Using interface ppp0" line.
@@ -1059,16 +1081,35 @@ class VPNManager: ObservableObject {
         let server = conn.server
         let interface = status(for: server.id)?.interface
         let knownTarget = conn.probeTarget
+        let nameservers = conn.nameservers
 
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            // A configured host, else the far end of the point-to-point link
-            let target = knownTarget ?? server.healthCheckHost ?? interface.flatMap(TunnelProbe.peerAddress(of:))
-            let latency = target.flatMap { TunnelProbe.ping(host: $0, interface: interface) }
-            self?.onMain { $0.probeFinished(conn, target: target, latency: latency) }
+            // Once a target has answered it is the one to watch. Until then: the configured host,
+            // else the far end of the point-to-point link (many gateways ignore ping there),
+            // then the DNS servers the gateway handed out.
+            let candidates: [String]
+            if let knownTarget {
+                candidates = [knownTarget]
+            } else if let host = server.healthCheckHost {
+                candidates = [host]
+            } else {
+                candidates = [interface.flatMap(TunnelProbe.peerAddress(of:))].compactMap { $0 } + nameservers
+            }
+
+            var answeredBy: String?
+            var latency: Double?
+            for candidate in candidates {
+                if let milliseconds = TunnelProbe.ping(host: candidate, interface: interface) {
+                    answeredBy = candidate
+                    latency = milliseconds
+                    break
+                }
+            }
+            self?.onMain { $0.probeFinished(conn, answeredBy: answeredBy, tried: candidates, latency: latency) }
         }
     }
 
-    private func probeFinished(_ conn: TunnelConnection, target: String?, latency: Double?) {
+    private func probeFinished(_ conn: TunnelConnection, answeredBy: String?, tried: [String], latency: Double?) {
         conn.probing = false
         // The tunnel went away (or was replaced) while the probe was running
         guard !conn.finished, connections[conn.server.id] === conn,
@@ -1076,14 +1117,15 @@ class VPNManager: ObservableObject {
 
         let name = conn.server.name
         let now = Date()
-        guard let target else {
+        guard !tried.isEmpty else {
             conn.health = .unknown
             conn.nextProbeAt = .distantFuture
             addLog(name, "Health check off: nothing to probe. Set a health check host in the server settings")
             publishLive(conn)
             return
         }
-        conn.probeTarget = target
+        if let answeredBy { conn.probeTarget = answeredBy }
+        let target = conn.probeTarget ?? tried.joined(separator: ", ")
 
         let wasEstablished = conn.tracker.established
         let hadProblem = conn.health.isProblem
@@ -1113,7 +1155,7 @@ class VPNManager: ObservableObject {
         case .notMeasurable:
             conn.health = .unknown
             conn.nextProbeAt = .distantFuture
-            addLog(name, "Health check off: \(target) does not answer ping through this tunnel. Set another host in the server settings")
+            addLog(name, "Health check off: \(target) does not answer ping through this tunnel. Set a health check host in the server settings")
         }
         publishLive(conn)
     }

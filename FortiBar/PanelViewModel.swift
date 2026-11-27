@@ -42,7 +42,14 @@ final class PanelViewModel: ObservableObject {
     func loadServers() {
         servers = ConfigManager.shared.config.servers
         // Cached here so the panel does not hit the Keychain on every redraw
-        serversWithoutPassword = Set(servers.filter { KeychainHelper.read(for: $0.id)?.isEmpty ?? true }.map(\.id))
+        // Off the main thread: the first Keychain access after an update may wait for an answer
+        let ids = servers.map(\.id)
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let withPassword = KeychainHelper.serverIDsWithPassword()
+            DispatchQueue.main.async {
+                self?.serversWithoutPassword = Set(ids).subtracting(withPassword)
+            }
+        }
     }
 
     func refreshSudoersStatus(completion: ((SudoersStatus) -> Void)? = nil) {
@@ -57,11 +64,16 @@ final class PanelViewModel: ObservableObject {
     }
 
     func connect(_ server: VPNServer) {
-        guard let password = KeychainHelper.read(for: server.id), !password.isEmpty else {
-            openSettings(.servers, .edit(server.id))
-            return
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let password = KeychainHelper.read(for: server.id)
+            DispatchQueue.main.async {
+                guard let password, !password.isEmpty else {
+                    self?.openSettings(.servers, .edit(server.id))
+                    return
+                }
+                VPNManager.shared.connect(to: server, password: password)
+            }
         }
-        VPNManager.shared.connect(to: server, password: password)
     }
 
     func disconnect(_ server: VPNServer) {

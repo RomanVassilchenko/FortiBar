@@ -50,11 +50,11 @@ cd FortiBar
 ./build_dmg.sh        # produces FortiBar_vX.Y.Z.dmg
 ```
 
-Without a code signing certificate named `FortiBar Self-Signed` in your keychain the app is signed ad hoc, and macOS asks for Keychain access again after every rebuild. Create one in Keychain Access → Certificate Assistant to keep the app's identity stable.
+`build_dmg.sh` signs with an `Apple Development` certificate from your keychain (a free Apple ID is enough: Xcode → Settings → Accounts → Manage Certificates), else with one named `FortiBar Self-Signed`. Without either the app is signed ad hoc, and macOS asks for Keychain access again after every rebuild.
 
 ### First launch
 
-Releases are signed with a self-signed certificate and are not notarized by Apple, so macOS blocks the first launch. Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to the FortiBar message. This is needed only once.
+Releases are signed with an Apple Development certificate and are not notarized by Apple, so macOS blocks the first launch. Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to the FortiBar message. This is needed only once.
 
 ### Allow openfortivpn to run as root
 
@@ -117,7 +117,7 @@ Quitting FortiBar (⌘Q, logout or `SIGTERM`) disconnects every tunnel first, so
 
 ### Tunnel health
 
-A tunnel can stay "connected" while it no longer carries traffic: after the Mac sleeps, or when Wi-Fi switches to another network. FortiBar pings the far end of each connected tunnel (or the server's **Health check host**) every 20 seconds, through the tunnel's own interface. The panel shows the latency; after three missed replies in a row it shows "not responding".
+A tunnel can stay "connected" while it no longer carries traffic: after the Mac sleeps, or when Wi-Fi switches to another network. FortiBar pings each connected tunnel every 20 seconds: the server's **Health check host** if set, otherwise the far end of the tunnel or, if that does not answer, the DNS servers the gateway handed out, through the tunnel's own interface. The panel shows the latency; after three missed replies in a row it shows "not responding".
 
 - With **Reconnect automatically** on, the tunnel is restarted at that point. Without it, FortiBar sends a notification and keeps watching.
 - After wake-up or a network change the check runs within seconds and every 3 seconds for half a minute, so a dead tunnel is usually replaced within about 20 seconds instead of whenever openfortivpn notices. A tunnel waiting to reconnect retries right away on wake-up.
@@ -227,9 +227,9 @@ Then delete `/Applications/OpenFortiMac.app`.
 
 ## Releasing
 
-Bump `MARKETING_VERSION` in Xcode and add a `## vX.Y.Z` section to `CHANGELOG.md`. When `main` gets a version that has no tag yet, the [Release workflow](.github/workflows/release.yml) runs `./build_dmg.sh` to build a universal DMG signed with the "FortiBar Self-Signed" certificate, attests the build provenance, scans it on VirusTotal and publishes the `vX.Y.Z` release with the changelog section as notes, then updates the cask in [homebrew-tap](https://github.com/RomanVassilchenko/homebrew-tap) through a pull request that it merges once `brew style` and `brew audit` pass. Pushing a tag with a suffix (`v1.4.0-rc.1`) publishes a pre-release and skips Homebrew; pull requests only build the DMG.
+Bump `MARKETING_VERSION` in Xcode and add a `## vX.Y.Z` section to `CHANGELOG.md`. When `main` gets a version that has no tag yet, the [Release workflow](.github/workflows/release.yml) runs `./build_dmg.sh` to build a universal DMG signed with the "Apple Development" certificate, attests the build provenance, scans it on VirusTotal and publishes the `vX.Y.Z` release with the changelog section as notes, then updates the cask in [homebrew-tap](https://github.com/RomanVassilchenko/homebrew-tap) through a pull request that it merges once `brew style` and `brew audit` pass. Pushing a tag with a suffix (`v1.4.0-rc.1`) publishes a pre-release and skips Homebrew; pull requests only build the DMG.
 
-Repository secrets: `SIGNING_CERT_P12`, `SIGNING_CERT_PASSWORD`, `VIRUSTOTAL_API_KEY`, `HOMEBREW_TAP_TOKEN` (fine-grained token with Contents and Pull requests write access to `homebrew-tap` only); variable `EXPECTED_CERT_SHA1`. Keep a backup of the `.p12`: a new certificate changes the app's identity and macOS asks for Keychain access again.
+Repository secrets: `SIGNING_CERT_P12`, `SIGNING_CERT_PASSWORD`, `VIRUSTOTAL_API_KEY`, `HOMEBREW_TAP_TOKEN` (fine-grained token with Contents and Pull requests write access to `homebrew-tap` only); variable `EXPECTED_TEAM_ID` (the Team ID of the signing certificate). Keep a backup of the `.p12` (`~/.fortibar-signing`). The Apple Development certificate expires after a year: create a new one in Xcode, export it with the Apple WWDR G3 certificate and update the secrets. The Team ID stays the same, so Keychain access survives.
 
 Tests: `xcodebuild test -project FortiBar.xcodeproj -scheme FortiBar -destination 'platform=macOS'`. The demo GIF is generated with `python3 scripts/make_panel_demo.py` (needs ffmpeg).
 

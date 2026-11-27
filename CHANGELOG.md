@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.8.1
+
+### Changed
+- All server passwords are kept in **one** Keychain item instead of one per server. macOS grants Keychain access per item and, for an app without an Apple Team ID, per build, so every update asked once for each server; now it asks once. Existing passwords are moved on the first launch (macOS may ask one last time) and the old items are deleted
+- Releases are signed with an Apple Development certificate (it carries a Team ID) instead of the self-signed one, so macOS can keep Keychain access across updates. This update changes the app's identity: macOS asks for Keychain access once more
+- The Keychain is read off the main thread, so a pending access prompt no longer freezes the app at launch
+
+### Fixed
+- The health check pings the DNS servers of the tunnel when the far end of the link does not answer ping (many gateways, including FortiGate, ignore it), so it works without setting a health check host
+
 ## v1.8.0
 
 ### Added

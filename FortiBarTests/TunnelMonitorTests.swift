@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import Security
 @testable import FortiBar
 
 struct HealthTrackerTests {
@@ -226,5 +227,77 @@ struct StatisticsTests {
 
         reloaded.clear()
         #expect(StatsStore(url: url).sessions.isEmpty)
+    }
+}
+
+struct NameserverParsingTests {
+    @Test func readsTheDNSServersTheGatewayHandsOut() {
+        let line = "INFO:   Got addresses: [10.211.108.9], ns [10.10.5.2, 0.0.0.0], ns_suffix [pulsar.kazdream.kz]"
+        #expect(VPNManager.assignedNameservers(in: line) == ["10.10.5.2"])
+        #expect(VPNManager.assignedNameservers(in: "Got addresses: [10.0.0.5], ns [1.1.1.1, 8.8.8.8]") == ["1.1.1.1", "8.8.8.8"])
+        #expect(VPNManager.assignedNameservers(in: "Got addresses: [10.0.0.5], ns [0.0.0.0, 0.0.0.0]").isEmpty)
+        #expect(VPNManager.assignedNameservers(in: "Got addresses: [10.0.0.5]").isEmpty)
+    }
+}
+
+struct KeychainStoreTests {
+    /// A store of its own in the real Keychain (throw-away service); nothing else is touched.
+    private func makeStore(migrating: Bool = false) -> KeychainStore {
+        KeychainStore(service: "fortibar-test-\(UUID().uuidString)", migratesPerServerItems: migrating)
+    }
+
+    private func cleanUp(_ store: KeychainStore, _ ids: [String]) {
+        ids.forEach { store.delete(for: $0) }
+        SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: store.service] as CFDictionary)
+    }
+
+    @Test func keepsPasswordsOfAllServersInOneItem() {
+        let store = makeStore()
+        defer { cleanUp(store, ["a", "b"]) }
+        // No usable Keychain (e.g. a locked CI session): nothing to test
+        guard store.save(password: "one", for: "a") else { return }
+
+        #expect(store.save(password: "two", for: "b"))
+        #expect(store.read(for: "a") == "one" && store.read(for: "b") == "two")
+        #expect(store.serverIDsWithPassword() == ["a", "b"])
+
+        #expect(store.save(password: "changed", for: "a"))
+        #expect(store.read(for: "a") == "changed")
+
+        store.delete(for: "a")
+        #expect(store.read(for: "a") == nil && store.read(for: "b") == "two")
+
+        let items = SecItemCopyMatching([
+            kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: store.service,
+            kSecReturnAttributes as String: true, kSecMatchLimit as String: kSecMatchLimitAll
+        ] as CFDictionary, nil)
+        #expect(items == errSecSuccess)
+    }
+
+    @Test func movesOneItemPerServerIntoTheSingleItem() {
+        let store = makeStore(migrating: true)
+        defer { cleanUp(store, ["a", "b", "c"]) }
+
+        func addPerServer(_ id: String, _ password: String) -> Bool {
+            SecItemAdd([
+                kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: store.service,
+                kSecAttrAccount as String: id, kSecValueData as String: Data(password.utf8)
+            ] as CFDictionary, nil) == errSecSuccess
+        }
+        guard addPerServer("a", "one"), addPerServer("b", "two") else { return }
+
+        #expect(store.read(for: "a") == "one")
+        #expect(store.read(for: "b") == "two")
+        #expect(store.read(for: "c") == nil)
+
+        // The per-server items are gone, the passwords live in the single item
+        let perServer = SecItemCopyMatching([
+            kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: store.service,
+            kSecAttrAccount as String: "a", kSecReturnData as String: true
+        ] as CFDictionary, nil)
+        #expect(perServer == errSecItemNotFound)
+
+        #expect(store.save(password: "three", for: "c"))
+        #expect(store.serverIDsWithPassword() == ["a", "b", "c"])
     }
 }
