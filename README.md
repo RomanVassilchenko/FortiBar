@@ -98,7 +98,7 @@ Click the shield in the menu bar → **Settings** (⌘,) → **Servers** → add
 
 The menu bar icon follows the menu bar appearance like system icons: an outlined shield when disconnected, a checkmark when one tunnel is up, the number of tunnels when several are.
 
-Click it to open the panel: a status card per tunnel (connection time, tunnel IP, **Disconnect** ⌘D), the server list (hover a server and click **Connect**; a server without a saved password opens its editor) and a footer with Add server, Settings, Log and Quit. Right-click the icon for a quick menu. FortiBar sends a notification on connect, disconnect and errors.
+Click it to open the panel: a status card per tunnel (connection time, latency, tunnel IP, traffic with the current speed, **Disconnect** ⌘D), the server list (hover a server and click **Connect**; a server without a saved password opens its editor) and a footer with Add server, Settings, Log and Quit. Right-click the icon for a quick menu. FortiBar sends a notification on connect, disconnect and errors.
 
 ### Multiple connections
 
@@ -111,7 +111,23 @@ Only one tunnel should own the default route and DNS. In the server editor → *
 - **Connect at launch**: connect when FortiBar starts.
 - **Reconnect automatically**: when the tunnel drops (network change, sleep, gateway timeout), retry after 2, 5, 10, 20, 30, then every 60 seconds until you disconnect. While offline it waits for the network. Wrong credentials or a certificate error stop the retries.
 
+- **Health check host**: a host that only the tunnel reaches (an internal server, say). Leave it empty to ping the far end of the tunnel.
+
 Quitting FortiBar (⌘Q, logout or `SIGTERM`) disconnects every tunnel first, so openfortivpn restores routes and DNS.
+
+### Tunnel health
+
+A tunnel can stay "connected" while it no longer carries traffic: after the Mac sleeps, or when Wi-Fi switches to another network. FortiBar pings the far end of each connected tunnel (or the server's **Health check host**) every 20 seconds, through the tunnel's own interface. The panel shows the latency; after three missed replies in a row it shows "not responding".
+
+- With **Reconnect automatically** on, the tunnel is restarted at that point. Without it, FortiBar sends a notification and keeps watching.
+- After wake-up or a network change the check runs within seconds and every 3 seconds for half a minute, so a dead tunnel is usually replaced within about 20 seconds instead of whenever openfortivpn notices. A tunnel waiting to reconnect retries right away on wake-up.
+- A host that never answers (ICMP blocked, not reachable through the tunnel) switches the check off for that connection and logs why; the tunnel is only restarted if the host answered before. Pick another host in the server editor if that happens.
+
+Turn it off in **Settings → General → Check tunnel health** (`fortibar settings --health-check off`).
+
+### Statistics
+
+**Settings → Statistics** shows the last seven days per server: time connected, number of interruptions (the tunnel dropped, or the health check stopped it), traffic received and sent, and a bar per day. The history is kept for 90 days in `stats.json` next to `config.json`; **Clear History…** deletes it.
 
 ### Command line
 
@@ -166,6 +182,8 @@ Optional fields, written only when used:
 | `static_routes` | server | CIDRs routed through the tunnel, e.g. `["10.20.30.0/24"]` |
 | `auto_connect` | server | Connect when FortiBar starts (default `false`) |
 | `auto_reconnect` | server | Reconnect when the tunnel drops (default `false`) |
+| `health_check_host` | server | Host the health check pings through the tunnel (default: the tunnel's far end) |
+| `health_check` | top level | Check tunnel health (default `true`; written only when `false`) |
 
 Passwords are never stored in this file; they live in the Keychain.
 

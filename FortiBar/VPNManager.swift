@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import UserNotifications
 import Combine
 import Network
@@ -74,6 +75,22 @@ private final class TunnelConnection {
     /// A stop was requested: the SIGTERM grace period (and any force stop) runs once
     var stopRequested = false
 
+    // Monitoring (see "Monitoring" in VPNManager)
+    /// When the tunnel came up; nil until then and after the session was recorded
+    var sessionStart: Date?
+    var traffic = TrafficAccumulator()
+    var health: TunnelHealth = .unknown
+    var tracker = HealthTracker()
+    /// Address the health check pings, resolved with the first probe
+    var probeTarget: String?
+    var probing = false
+    var nextProbeAt = Date.distantFuture
+    /// Probe more often until then (after wake-up or a network change)
+    var burstUntil = Date.distantPast
+    /// The health check stopped this tunnel because it stopped passing traffic
+    var restartedForHealth = false
+    var notifiedUnresponsive = false
+
     init(server: VPNServer, process: Process, pipe: Pipe, configPath: String) {
         self.server = server
         self.process = process
@@ -95,6 +112,9 @@ class VPNManager: ObservableObject {
     @Published private(set) var connectionLogs: [String] = []
     /// Last failure per server id (shown by the CLI); cleared on the next connect
     @Published private(set) var lastErrors: [String: TunnelError] = [:]
+    /// Traffic and health of connected tunnels, by server id. Separate from `tunnels`
+    /// because it changes every couple of seconds and must not rewrite state.json.
+    @Published private(set) var live: [String: TunnelLive] = [:]
 
     struct TunnelError: Equatable {
         let message: String
@@ -108,6 +128,9 @@ class VPNManager: ObservableObject {
     /// Auto-reconnect waits for the network instead of failing attempts while offline
     private let pathMonitor = NWPathMonitor()
     private var networkAvailable = true
+    /// Interfaces and gateways of the last network path: a change means a new network
+    private var networkSignature: [String]?
+    private var monitorTimer: Timer?
 
     /// Seconds before each reconnect attempt; the last value repeats
     static let reconnectDelays: [TimeInterval] = [2, 5, 10, 20, 30, 60]
@@ -117,11 +140,21 @@ class VPNManager: ObservableObject {
 
         pathMonitor.pathUpdateHandler = { [weak self] path in
             let available = path.status == .satisfied
+            // Physical interfaces only: the tunnel's own ppp interface comes and goes with us
+            let physical: Set<NWInterface.InterfaceType> = [.wifi, .wiredEthernet, .cellular]
+            let signature = path.availableInterfaces.filter { physical.contains($0.type) }.map(\.name).sorted()
+                + path.gateways.map { "\($0)" }.sorted()
             DispatchQueue.main.async {
-                self?.networkChanged(available: available)
+                self?.networkChanged(available: available, signature: signature)
             }
         }
         pathMonitor.start(queue: DispatchQueue(label: "fortibar.network"))
+
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.systemDidWake() }
+        }
     }
 
     // MARK: - Computed state
@@ -494,11 +527,17 @@ class VPNManager: ObservableObject {
         // openfortivpn read its config at startup: do not keep the password on disk while connected
         try? FileManager.default.removeItem(atPath: conn.configPath)
 
+        let now = Date()
         updateTunnel(server.id) { status in
             status.state = .connected(serverName: server.name)
-            status.connectedSince = Date()
+            status.connectedSince = now
             status.reconnectAttempt = 0
         }
+        conn.sessionStart = now
+        // The first probe waits a moment for routes and DNS to settle
+        conn.nextProbeAt = now.addingTimeInterval(Self.firstProbeDelay)
+        live[server.id] = TunnelLive()
+        startMonitor()
         notifyStateChange()
         showNotification(title: reconnected ? "VPN Reconnected" : "VPN Connected", body: server.name)
 
@@ -624,6 +663,7 @@ class VPNManager: ObservableObject {
             }
             // openfortivpn has read its config by now: do not leave the password on disk
             try? FileManager.default.removeItem(atPath: conn.configPath)
+            endSession(conn, reason: .quit)
         }
         return active.map(\.process)
     }
@@ -879,9 +919,17 @@ class VPNManager: ObservableObject {
         startAttempt(server: server, password: password)
     }
 
-    private func networkChanged(available: Bool) {
+    private func networkChanged(available: Bool, signature: [String]) {
         let restored = available && !networkAvailable
+        // The first callback only records where we are
+        let changed = networkSignature != nil && networkSignature != signature
         networkAvailable = available
+        networkSignature = signature
+
+        // A tunnel often stays "up" over a dead path (Wi-Fi switched, cable pulled): look at it now
+        if available, changed || restored {
+            expediteHealthChecks(reason: "Network changed")
+        }
         guard restored else { return }
 
         // Retry right away instead of waiting for the backoff to expire
@@ -921,6 +969,8 @@ class VPNManager: ObservableObject {
     /// Main thread: releases everything the connection owned.
     /// `keepStatus`: the tunnel entry stays for an auto-reconnect.
     private func finish(_ conn: TunnelConnection, keepStatus: Bool = false) {
+        let endState = status(for: conn.server.id)?.state
+        endSession(conn, reason: conn.restartedForHealth ? .unresponsive : (endState?.isConnected == true ? .dropped : .user))
         conn.finished = true
         conn.pipe.fileHandleForReading.readabilityHandler = nil
         // The handler captures the connection, which owns the process: break the cycle
@@ -930,8 +980,211 @@ class VPNManager: ObservableObject {
 
         if connections[conn.server.id] === conn {
             connections.removeValue(forKey: conn.server.id)
+            live.removeValue(forKey: conn.server.id)
             if !keepStatus {
                 removeTunnel(conn.server.id)
+            }
+        }
+    }
+
+    // MARK: - Monitoring (traffic, health check, wake-up)
+
+    /// Seconds between traffic samples
+    private static let monitorInterval: TimeInterval = 2
+    /// Seconds before the first probe of a new connection
+    private static let firstProbeDelay: TimeInterval = 5
+    /// Seconds between probes of a healthy tunnel
+    private static let probeInterval: TimeInterval = 20
+    /// Seconds between probes while one failed (and while still looking for a first answer)
+    private static let failingProbeInterval: TimeInterval = 5
+    /// Seconds between probes right after wake-up or a network change
+    private static let burstProbeInterval: TimeInterval = 3
+    private static let burstDuration: TimeInterval = 30
+    /// Wi-Fi and DNS need a moment after wake-up before a probe means anything
+    private static let wakeSettleDelay: TimeInterval = 3
+
+    private func startMonitor() {
+        guard monitorTimer == nil else { return }
+        let timer = Timer(timeInterval: Self.monitorInterval, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.monitorTick() }
+        }
+        // Common modes: keeps ticking while the menu bar menu or a window is tracking events
+        RunLoop.main.add(timer, forMode: .common)
+        monitorTimer = timer
+    }
+
+    private func stopMonitor() {
+        monitorTimer?.invalidate()
+        monitorTimer = nil
+    }
+
+    /// Connections that are up right now.
+    private var connectedConnections: [TunnelConnection] {
+        connections.values.filter { conn in
+            !conn.finished && conn.sessionStart != nil && status(for: conn.server.id)?.isConnected == true
+        }
+    }
+
+    private func monitorTick() {
+        let active = connectedConnections
+        guard !active.isEmpty else {
+            stopMonitor()
+            if !live.isEmpty { live = [:] }
+            return
+        }
+
+        let now = Date()
+        let counters = InterfaceCounters.read()
+        let healthCheck = ConfigManager.shared.config.healthCheck
+        for conn in active {
+            if let interface = status(for: conn.server.id)?.interface, let sample = counters[interface] {
+                conn.traffic.update(rx: sample.rx, tx: sample.tx, at: now)
+            }
+            if healthCheck, !conn.probing, now >= conn.nextProbeAt {
+                startProbe(conn)
+            }
+            publishLive(conn)
+        }
+    }
+
+    private func publishLive(_ conn: TunnelConnection) {
+        let value = TunnelLive(traffic: conn.traffic, health: conn.health)
+        guard live[conn.server.id] != value else { return }
+        live[conn.server.id] = value
+    }
+
+    /// Main thread: pings the tunnel off the main thread and hears back in `probeFinished`.
+    private func startProbe(_ conn: TunnelConnection) {
+        conn.probing = true
+        let server = conn.server
+        let interface = status(for: server.id)?.interface
+        let knownTarget = conn.probeTarget
+
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            // A configured host, else the far end of the point-to-point link
+            let target = knownTarget ?? server.healthCheckHost ?? interface.flatMap(TunnelProbe.peerAddress(of:))
+            let latency = target.flatMap { TunnelProbe.ping(host: $0, interface: interface) }
+            self?.onMain { $0.probeFinished(conn, target: target, latency: latency) }
+        }
+    }
+
+    private func probeFinished(_ conn: TunnelConnection, target: String?, latency: Double?) {
+        conn.probing = false
+        // The tunnel went away (or was replaced) while the probe was running
+        guard !conn.finished, connections[conn.server.id] === conn,
+              status(for: conn.server.id)?.isConnected == true else { return }
+
+        let name = conn.server.name
+        let now = Date()
+        guard let target else {
+            conn.health = .unknown
+            conn.nextProbeAt = .distantFuture
+            addLog(name, "Health check off: nothing to probe. Set a health check host in the server settings")
+            publishLive(conn)
+            return
+        }
+        conn.probeTarget = target
+
+        let wasEstablished = conn.tracker.established
+        let hadProblem = conn.health.isProblem
+        let inBurst = now < conn.burstUntil
+
+        switch conn.tracker.record(latency: latency) {
+        case .good(let milliseconds):
+            conn.health = .good(latency: milliseconds)
+            conn.notifiedUnresponsive = false
+            if !wasEstablished {
+                addLog(name, "Health check: \(target) answers (\(Int(milliseconds.rounded())) ms)")
+            } else if hadProblem {
+                addLog(name, "The tunnel responds again")
+            }
+            conn.nextProbeAt = now.addingTimeInterval(inBurst ? Self.burstProbeInterval : Self.probeInterval)
+        case .waiting:
+            conn.nextProbeAt = now.addingTimeInterval(Self.failingProbeInterval)
+        case .failing:
+            conn.health = .failing
+            if !hadProblem {
+                addLog(name, "No reply from \(target) through the tunnel")
+            }
+            conn.nextProbeAt = now.addingTimeInterval(inBurst ? Self.burstProbeInterval : Self.failingProbeInterval)
+        case .unresponsive:
+            conn.health = .unresponsive
+            handleUnresponsive(conn, target: target)
+        case .notMeasurable:
+            conn.health = .unknown
+            conn.nextProbeAt = .distantFuture
+            addLog(name, "Health check off: \(target) does not answer ping through this tunnel. Set another host in the server settings")
+        }
+        publishLive(conn)
+    }
+
+    /// The tunnel is up but no longer passes traffic: restart it when auto-reconnect is on,
+    /// otherwise say so and keep watching.
+    private func handleUnresponsive(_ conn: TunnelConnection, target: String) {
+        let name = conn.server.name
+        if autoReconnectEnabled(for: conn.server.id) {
+            addLog(name, "The tunnel stopped responding (no reply from \(target)): restarting it")
+            conn.restartedForHealth = true
+            conn.nextProbeAt = .distantFuture
+            // The state stays "connected", so its exit is treated as a drop and reconnects
+            terminate(conn: conn)
+            return
+        }
+
+        conn.nextProbeAt = Date().addingTimeInterval(Self.failingProbeInterval)
+        guard !conn.notifiedUnresponsive else { return }
+        conn.notifiedUnresponsive = true
+        addLog(name, "The tunnel stopped responding (no reply from \(target)). Reconnect it, or turn on automatic reconnect for this server")
+        showNotification(title: "VPN Not Responding", body: "\(name): the tunnel passes no traffic. Reconnect it.")
+    }
+
+    /// Checks connected tunnels soon and often for a while, e.g. after wake-up.
+    private func expediteHealthChecks(reason: String) {
+        guard ConfigManager.shared.config.healthCheck else { return }
+        let now = Date()
+        for conn in connectedConnections where conn.tracker.established && !conn.restartedForHealth {
+            // Failures from before the sleep or the switch say nothing about the new situation
+            conn.tracker.resetFailures()
+            conn.burstUntil = now.addingTimeInterval(Self.burstDuration)
+            conn.nextProbeAt = min(conn.nextProbeAt, now.addingTimeInterval(Self.wakeSettleDelay))
+            addLog(conn.server.name, "\(reason): checking the tunnel")
+        }
+    }
+
+    private func systemDidWake() {
+        guard hasTunnels else { return }
+        expediteHealthChecks(reason: "Mac woke up")
+
+        // A tunnel waiting out a long backoff retries now instead of up to a minute later
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.wakeSettleDelay) { [weak self] in
+            guard let self = self else { return }
+            for status in self.tunnels {
+                if case .reconnecting(let date) = status.state, date != nil {
+                    self.addLog(status.serverName, "Mac woke up: reconnecting now")
+                    self.reconnect(serverID: status.serverID)
+                }
+            }
+        }
+    }
+
+    // MARK: - Statistics
+
+    /// Records the connection once, with how it ended.
+    private func endSession(_ conn: TunnelConnection, reason: SessionRecord.End) {
+        guard let start = conn.sessionStart else { return }
+        conn.sessionStart = nil
+        StatsStore.shared.record(SessionRecord(
+            serverID: conn.server.id, serverName: conn.server.name, start: start, end: Date(),
+            rxBytes: conn.traffic.rxBytes, txBytes: conn.traffic.txBytes, endedBy: reason
+        ))
+    }
+
+    /// Connections still running, as sessions that end now, for the Statistics tab.
+    func activeSessions(now: Date = Date()) -> [SessionRecord] {
+        connectedConnections.compactMap { conn in
+            conn.sessionStart.map {
+                SessionRecord(serverID: conn.server.id, serverName: conn.server.name, start: $0, end: now,
+                              rxBytes: conn.traffic.rxBytes, txBytes: conn.traffic.txBytes, endedBy: .active)
             }
         }
     }

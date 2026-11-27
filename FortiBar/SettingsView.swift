@@ -3,13 +3,14 @@ import Combine
 import ServiceManagement
 
 enum SettingsTab: CaseIterable {
-    case servers, permission, general, log
+    case servers, permission, general, statistics, log
 
     var title: String {
         switch self {
         case .servers: return "Servers"
         case .permission: return "Permission"
         case .general: return "General"
+        case .statistics: return "Statistics"
         case .log: return "Log"
         }
     }
@@ -19,6 +20,7 @@ enum SettingsTab: CaseIterable {
         case .servers: return "server.rack"
         case .permission: return "lock.shield"
         case .general: return "gearshape"
+        case .statistics: return "chart.bar"
         case .log: return "doc.text"
         }
     }
@@ -57,6 +59,7 @@ struct SettingsView: View {
                 case .servers: serversTab
                 case .permission: permissionTab
                 case .general: generalTab
+                case .statistics: StatisticsView()
                 case .log: logTab
                 }
             }
@@ -406,6 +409,16 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
             
+            Section {
+                Toggle("Check tunnel health", isOn: $viewModel.healthCheck)
+            } header: {
+                Text("Tunnel Health")
+            } footer: {
+                Text("Pings the far end of each connected tunnel and, with automatic reconnect on, restarts one that stops passing traffic, e.g. after the Mac wakes up on another network. Set a host inside the tunnel per server to check that instead.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Startup") {
                 Toggle("Launch at login", isOn: $viewModel.launchAtLogin)
             }
@@ -680,6 +693,7 @@ struct ServerEditView: View {
     @State private var staticRoutes: String = ""
     @State private var autoConnect: Bool = false
     @State private var autoReconnect: Bool = false
+    @State private var healthCheckHost: String = ""
     @State private var validationError: String?
     
     var isEditing: Bool { server != nil }
@@ -730,6 +744,12 @@ struct ServerEditView: View {
                     Toggle("Connect at launch", isOn: $autoConnect)
                     Toggle("Reconnect automatically", isOn: $autoReconnect)
                         .help("Reconnects when the tunnel drops, e.g. after a network change, until you disconnect")
+                    LabeledContent("Health check host") {
+                        TextField("", text: $healthCheckHost, prompt: Text("Tunnel far end (automatic)"))
+                            .labelsHidden()
+                            .multilineTextAlignment(.trailing)
+                    }
+                    .help("A host reachable only through the tunnel, pinged to tell whether the tunnel still passes traffic")
                     Toggle("Don't change routes or DNS", isOn: $noRoutesDNS)
                         .help("Runs openfortivpn with --no-routes --no-dns")
                     LabeledContent("Static routes") {
@@ -793,6 +813,7 @@ struct ServerEditView: View {
                 staticRoutes = server.staticRoutes.joined(separator: "\n")
                 autoConnect = server.autoConnect
                 autoReconnect = server.autoReconnect
+                healthCheckHost = server.healthCheckHost ?? ""
             }
         }
     }
@@ -840,6 +861,12 @@ struct ServerEditView: View {
         let cert = trustedCert.trimmingCharacters(in: .whitespacesAndNewlines)
         if !cert.isEmpty, cert.range(of: #"^[0-9a-fA-F]{64}$"#, options: .regularExpression) == nil {
             validationError = "Certificate must be a SHA-256 digest (64 hex digits), or empty"
+            return false
+        }
+
+        let healthHost = healthCheckHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !healthHost.isEmpty, !TunnelProbe.isValidHost(healthHost) {
+            validationError = "Health check host must be a host name or an IPv4 address"
             return false
         }
 
@@ -898,7 +925,8 @@ struct ServerEditView: View {
             noRoutesDNS: noRoutesDNS,
             staticRoutes: parsedRoutes,
             autoConnect: autoConnect,
-            autoReconnect: autoReconnect
+            autoReconnect: autoReconnect,
+            healthCheckHost: healthCheckHost.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         )
         
         if !password.isEmpty, !KeychainHelper.save(password: password, for: newServer.id) {
@@ -934,6 +962,13 @@ class SettingsViewModel: ObservableObject {
         didSet {
             if !isApplyingStoredValues, oldValue != allowMultipleConnections {
                 ConfigManager.shared.saveAllowMultipleConnections(allowMultipleConnections)
+            }
+        }
+    }
+    @Published var healthCheck: Bool = true {
+        didSet {
+            if !isApplyingStoredValues, oldValue != healthCheck {
+                ConfigManager.shared.saveHealthCheck(healthCheck)
             }
         }
     }
@@ -977,6 +1012,7 @@ class SettingsViewModel: ObservableObject {
         applyStoredValues {
             openfortivpnPath = ConfigManager.shared.config.openfortivpnPath
             allowMultipleConnections = ConfigManager.shared.config.allowMultipleConnections
+            healthCheck = ConfigManager.shared.config.healthCheck
         }
         loadLaunchAtLogin()
         refreshSudoersStatus()
@@ -1002,6 +1038,7 @@ class SettingsViewModel: ObservableObject {
             self.refreshID = UUID()
             self.applyStoredValues {
                 self.allowMultipleConnections = config.allowMultipleConnections
+                self.healthCheck = config.healthCheck
                 self.openfortivpnPath = config.openfortivpnPath
             }
         }
@@ -1222,4 +1259,8 @@ class SettingsViewModel: ObservableObject {
 
 #Preview {
     SettingsView()
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

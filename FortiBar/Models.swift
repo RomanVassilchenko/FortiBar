@@ -7,6 +7,9 @@ struct AppConfig: Codable {
     /// Off by default: connecting to a server first drops the current tunnel,
     /// as in earlier versions. On: every server runs its own tunnel side by side.
     var allowMultipleConnections: Bool
+    /// On by default: probe connected tunnels and restart one that stopped passing traffic,
+    /// e.g. after the Mac woke from sleep.
+    var healthCheck: Bool
 
     static let defaultOpenfortivpnPath = "/opt/homebrew/bin/openfortivpn"
 
@@ -19,6 +22,7 @@ struct AppConfig: Codable {
         case servers
         case openfortivpnPath = "openfortivpn_path"
         case allowMultipleConnections = "allow_multiple_connections"
+        case healthCheck = "health_check"
         // "menu_bar_icon" (classic/monochrome) from 1.4 is no longer a setting:
         // it is not listed here, so old files still decode and the key is dropped on save
     }
@@ -26,11 +30,13 @@ struct AppConfig: Codable {
     init(
         servers: [VPNServer],
         openfortivpnPath: String,
-        allowMultipleConnections: Bool = false
+        allowMultipleConnections: Bool = false,
+        healthCheck: Bool = true
     ) {
         self.servers = servers
         self.openfortivpnPath = openfortivpnPath
         self.allowMultipleConnections = allowMultipleConnections
+        self.healthCheck = healthCheck
     }
 
     init(from decoder: Decoder) throws {
@@ -38,6 +44,7 @@ struct AppConfig: Codable {
         servers = Self.uniquingIDs(try container.decodeIfPresent([VPNServer].self, forKey: .servers) ?? [])
         openfortivpnPath = try container.decodeIfPresent(String.self, forKey: .openfortivpnPath) ?? Self.defaultOpenfortivpnPath
         allowMultipleConnections = try container.decodeIfPresent(Bool.self, forKey: .allowMultipleConnections) ?? false
+        healthCheck = try container.decodeIfPresent(Bool.self, forKey: .healthCheck) ?? true
     }
 
     func encode(to encoder: Encoder) throws {
@@ -47,6 +54,9 @@ struct AppConfig: Codable {
         // Written only when enabled, so existing config files stay unchanged
         if allowMultipleConnections {
             try container.encode(true, forKey: .allowMultipleConnections)
+        }
+        if !healthCheck {
+            try container.encode(false, forKey: .healthCheck)
         }
     }
 
@@ -67,7 +77,8 @@ struct AppConfig: Codable {
                 name: server.name, host: server.host, port: server.port, username: server.username,
                 password: server.password, trustedCert: server.trustedCert, icon: server.icon, id: id,
                 noRoutesDNS: server.noRoutesDNS, staticRoutes: server.staticRoutes,
-                autoConnect: server.autoConnect, autoReconnect: server.autoReconnect
+                autoConnect: server.autoConnect, autoReconnect: server.autoReconnect,
+                healthCheckHost: server.healthCheckHost
             )
         }
     }
@@ -99,6 +110,8 @@ struct VPNServer: Codable, Identifiable, Hashable {
     /// Reconnect when the tunnel drops (network change, gateway timeout, sleep)
     /// until the user disconnects.
     let autoReconnect: Bool
+    /// Host inside the tunnel that the health check pings; nil: the tunnel's far end
+    let healthCheckHost: String?
 
     static let defaultIcon = "server.rack"
     static let iconChoices = ["server.rack", "building.2", "briefcase", "house", "cloud", "lock.shield", "network", "desktopcomputer"]
@@ -112,6 +125,7 @@ struct VPNServer: Codable, Identifiable, Hashable {
         case staticRoutes = "static_routes"
         case autoConnect = "auto_connect"
         case autoReconnect = "auto_reconnect"
+        case healthCheckHost = "health_check_host"
     }
 
     init(
@@ -126,7 +140,8 @@ struct VPNServer: Codable, Identifiable, Hashable {
         noRoutesDNS: Bool = false,
         staticRoutes: [String] = [],
         autoConnect: Bool = false,
-        autoReconnect: Bool = false
+        autoReconnect: Bool = false,
+        healthCheckHost: String? = nil
     ) {
         self.id = id ?? UUID().uuidString
         self.name = name
@@ -140,6 +155,7 @@ struct VPNServer: Codable, Identifiable, Hashable {
         self.staticRoutes = staticRoutes
         self.autoConnect = autoConnect
         self.autoReconnect = autoReconnect
+        self.healthCheckHost = healthCheckHost
     }
 
     init(from decoder: Decoder) throws {
@@ -159,6 +175,8 @@ struct VPNServer: Codable, Identifiable, Hashable {
         staticRoutes = try container.decodeIfPresent([String].self, forKey: .staticRoutes) ?? []
         autoConnect = try container.decodeIfPresent(Bool.self, forKey: .autoConnect) ?? false
         autoReconnect = try container.decodeIfPresent(Bool.self, forKey: .autoReconnect) ?? false
+        let host = try container.decodeIfPresent(String.self, forKey: .healthCheckHost)
+        healthCheckHost = host?.isEmpty == false ? host : nil
     }
 
     func encode(to encoder: Encoder) throws {
@@ -184,6 +202,7 @@ struct VPNServer: Codable, Identifiable, Hashable {
         if autoReconnect {
             try container.encode(true, forKey: .autoReconnect)
         }
+        try container.encodeIfPresent(healthCheckHost, forKey: .healthCheckHost)
     }
 
     /// Stable UUID-formatted id computed from the profile, for configs written without ids.
@@ -200,7 +219,8 @@ struct VPNServer: Codable, Identifiable, Hashable {
         VPNServer(
             name: name, host: host, port: port, username: username, password: password,
             trustedCert: digest, icon: icon, id: id, noRoutesDNS: noRoutesDNS,
-            staticRoutes: staticRoutes, autoConnect: autoConnect, autoReconnect: autoReconnect
+            staticRoutes: staticRoutes, autoConnect: autoConnect, autoReconnect: autoReconnect,
+            healthCheckHost: healthCheckHost
         )
     }
 

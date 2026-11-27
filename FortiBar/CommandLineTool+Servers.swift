@@ -20,8 +20,8 @@ extension CommandLineTool {
     /// Options taking a value; everything else starting with "--" is a flag.
     static let valueOptions: Set<String> = [
         "--name", "--host", "--port", "--user", "--username", "--cert", "--icon",
-        "--route", "--add-route", "--remove-route",
-        "--allow-multiple", "--openfortivpn-path"
+        "--route", "--add-route", "--remove-route", "--health-host",
+        "--allow-multiple", "--openfortivpn-path", "--health-check"
     ]
 
     /// Options without a value. Anything else starting with "--" is rejected, so a typo
@@ -29,7 +29,7 @@ extension CommandLineTool {
     static let flagOptions: Set<String> = [
         "--password", "--password-stdin", "--no-routes-dns", "--routes-dns",
         "--clear-routes", "--auto-connect", "--no-auto-connect",
-        "--auto-reconnect", "--no-auto-reconnect", "--no-cert", "--yes", "-y"
+        "--auto-reconnect", "--no-auto-reconnect", "--no-cert", "--no-health-host", "--yes", "-y"
     ]
 
     static func parseOptions(_ args: [String]) -> Options? {
@@ -105,7 +105,8 @@ extension CommandLineTool {
             noRoutesDNS: options.has("--no-routes-dns"),
             staticRoutes: routes,
             autoConnect: options.has("--auto-connect"),
-            autoReconnect: options.has("--auto-reconnect")
+            autoReconnect: options.has("--auto-reconnect"),
+            healthCheckHost: nonEmpty(options.value("--health-host"))
         )
         if let problem = validate(server) {
             printError(problem)
@@ -159,6 +160,10 @@ extension CommandLineTool {
         if options.has("--auto-reconnect") { autoReconnect = true }
         if options.has("--no-auto-reconnect") { autoReconnect = false }
 
+        var healthHost = old.healthCheckHost
+        if let value = options.value("--health-host") { healthHost = nonEmpty(value) }
+        if options.has("--no-health-host") { healthHost = nil }
+
         var cert = old.trustedCert
         if let value = options.value("--cert") { cert = nonEmpty(value) }
         if options.has("--no-cert") { cert = nil }
@@ -185,7 +190,8 @@ extension CommandLineTool {
             noRoutesDNS: noRoutesDNS,
             staticRoutes: routes,
             autoConnect: autoConnect,
-            autoReconnect: autoReconnect
+            autoReconnect: autoReconnect,
+            healthCheckHost: healthHost
         )
         if let problem = validate(server, previous: old) {
             printError(problem)
@@ -280,6 +286,7 @@ extension CommandLineTool {
                 "username": server.username, "icon": server.iconName,
                 "no_routes_dns": server.noRoutesDNS, "static_routes": server.staticRoutes,
                 "auto_connect": server.autoConnect, "auto_reconnect": server.autoReconnect,
+                "health_check_host": server.healthCheckHost.map { $0 as Any } ?? NSNull(),
                 "has_password": hasPassword,
                 "state": tunnel?.state ?? "disconnected"
             ]
@@ -300,6 +307,7 @@ extension CommandLineTool {
             ("Static routes", server.staticRoutes.isEmpty ? "-" : server.staticRoutes.joined(separator: ", ")),
             ("Auto-connect", server.autoConnect ? "yes" : "no"),
             ("Reconnect", server.autoReconnect ? "automatically" : "no"),
+            ("Health check", server.healthCheckHost ?? "the tunnel's far end"),
             ("State", tunnel.map { [$0.state, $0.ip, $0.interface].compactMap { $0 }.joined(separator: ", ") } ?? "disconnected")
         ]
         for (label, value) in rows {
@@ -319,6 +327,8 @@ extension CommandLineTool {
         // Validate everything before saving anything, so a bad value leaves the config untouched
         let enabled = options.value("--allow-multiple").map(parseBool)
         if case .some(.none) = enabled { return usage("--allow-multiple takes on or off") }
+        let healthCheck = options.value("--health-check").map(parseBool)
+        if case .some(.none) = healthCheck { return usage("--health-check takes on or off") }
         let path = options.value("--openfortivpn-path")
         if let path = path {
             // Relative paths would be resolved against the app's working directory, not this one
@@ -334,17 +344,22 @@ extension CommandLineTool {
         if let path = path {
             ConfigManager.shared.saveOpenfortivpnPath(path)
         }
-        if enabled != nil || path != nil { configChanged() }
+        if let healthCheck = healthCheck ?? nil {
+            ConfigManager.shared.saveHealthCheck(healthCheck)
+        }
+        if enabled != nil || path != nil || healthCheck != nil { configChanged() }
 
         let config = ConfigManager.shared.config
         if json {
             return printJSON([
                 "allow_multiple_connections": config.allowMultipleConnections,
+                "health_check": config.healthCheck,
                 "openfortivpn_path": config.openfortivpnPath,
                 "config_file": ConfigManager.configPath.path
             ] as [String: Any])
         }
         print(pad("Allow multiple connections:", 29) + (config.allowMultipleConnections ? "on" : "off"))
+        print(pad("Tunnel health check:", 29) + (config.healthCheck ? "on" : "off"))
         print(pad("openfortivpn:", 29) + config.openfortivpnPath)
         print(pad("Config file:", 29) + ConfigManager.configPath.path)
         return 0
@@ -408,6 +423,9 @@ extension CommandLineTool {
         }
         if let bad = server.staticRoutes.first(where: { !VPNServer.isValidCIDR($0) }) {
             return "invalid route \"\(bad)\": use CIDR notation like 10.20.30.0/24"
+        }
+        if let host = server.healthCheckHost, !TunnelProbe.isValidHost(host) {
+            return "invalid health check host \"\(host)\": use a host name or an IPv4 address"
         }
         if let icon = server.icon, icon != previous?.icon, !VPNServer.iconChoices.contains(icon) {
             return "unknown icon \"\(icon)\": choose one of " + VPNServer.iconChoices.joined(separator: ", ")

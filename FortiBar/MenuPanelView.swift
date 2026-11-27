@@ -37,11 +37,12 @@ struct MenuPanelView: View {
     private var tunnelCards: some View {
         VStack(spacing: 8) {
             if vpn.tunnels.isEmpty {
-                TunnelCard(tunnel: nil, onDisconnect: nil, disconnectShortcut: false)
+                TunnelCard(tunnel: nil, live: nil, onDisconnect: nil, disconnectShortcut: false)
             }
             ForEach(vpn.tunnels) { tunnel in
                 TunnelCard(
                     tunnel: tunnel,
+                    live: vpn.live[tunnel.serverID],
                     onDisconnect: { model.disconnect(serverID: tunnel.serverID) },
                     // ⌘D stays unambiguous: only with a single tunnel
                     disconnectShortcut: vpn.tunnels.count == 1
@@ -118,6 +119,7 @@ struct MenuPanelView: View {
                 PanelServerRow(
                     server: server,
                     tunnel: vpn.status(for: server.id),
+                    live: vpn.live[server.id],
                     hasPassword: !model.serversWithoutPassword.contains(server.id)
                 ) {
                     model.toggle(server)
@@ -181,12 +183,15 @@ extension VPNState {
 /// only the status puck and the buttons are glass.
 private struct TunnelCard: View {
     let tunnel: TunnelStatus?
+    let live: TunnelLive?
     let onDisconnect: (() -> Void)?
     let disconnectShortcut: Bool
 
     private var state: VPNState { tunnel?.state ?? .disconnected }
     private var busy: Bool { tunnel?.isBusy ?? false }
-    private var tint: Color { state.tint }
+    /// Connected, but the health check sees no traffic getting through
+    private var troubled: Bool { state.isConnected && live?.health.isProblem == true }
+    private var tint: Color { troubled ? .orange : state.tint }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -197,7 +202,7 @@ private struct TunnelCard: View {
                     Text(tunnel?.serverName ?? "Not connected")
                         .font(.headline)
                         .lineLimit(1)
-                    TunnelSubtitle(tunnel: tunnel)
+                    TunnelSubtitle(tunnel: tunnel, health: live?.health ?? .unknown)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -228,7 +233,7 @@ private struct TunnelCard: View {
             if busy {
                 ProgressView().controlSize(.small)
             } else {
-                Image(systemName: state.iconSymbol)
+                Image(systemName: troubled ? "exclamationmark.shield.fill" : state.iconSymbol)
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(tint)
             }
@@ -255,6 +260,9 @@ private struct TunnelCard: View {
                 Label(tunnel.routes.joined(separator: ", "), systemImage: "arrow.triangle.branch")
                     .lineLimit(2)
             }
+            if let live {
+                trafficLine(live)
+            }
         }
         .font(.caption)
         .foregroundStyle(.secondary)
@@ -263,9 +271,39 @@ private struct TunnelCard: View {
     }
 }
 
+/// Traffic through the tunnel since it came up, with the current speed while data is moving.
+extension TunnelCard {
+    @ViewBuilder
+    fileprivate func trafficLine(_ live: TunnelLive) -> some View {
+        let traffic = live.traffic
+        HStack(spacing: 12) {
+            Label(ByteFormat.size(traffic.rxBytes) + rateSuffix(traffic.rxRate), systemImage: "arrow.down")
+            Label(ByteFormat.size(traffic.txBytes) + rateSuffix(traffic.txRate), systemImage: "arrow.up")
+        }
+        .monospacedDigit()
+        .help("Received and sent through this tunnel since it connected")
+    }
+
+    private func rateSuffix(_ rate: Double) -> String {
+        // Under 1 KB/s is idle chatter
+        rate >= 1024 ? " · " + ByteFormat.rate(rate) : ""
+    }
+}
+
+enum ByteFormat {
+    static func size(_ bytes: UInt64) -> String {
+        ByteCountFormatter.string(fromByteCount: Int64(clamping: bytes), countStyle: .binary)
+    }
+
+    static func rate(_ bytesPerSecond: Double) -> String {
+        size(UInt64(max(0, bytesPerSecond))) + "/s"
+    }
+}
+
 /// Status line under the tunnel name; connected and reconnecting tick every second.
 private struct TunnelSubtitle: View {
     let tunnel: TunnelStatus?
+    let health: TunnelHealth
 
     var body: some View {
         switch tunnel?.state ?? .disconnected {
@@ -287,12 +325,30 @@ private struct TunnelSubtitle: View {
         case .connected:
             if let since = tunnel?.connectedSince {
                 TimelineView(.periodic(from: since, by: 1)) { context in
-                    Text("Connected · \(CommandLineTool.duration(context.date.timeIntervalSince(since)))")
-                        .monospacedDigit()
+                    HStack(spacing: 0) {
+                        Text("Connected · \(CommandLineTool.duration(context.date.timeIntervalSince(since)))")
+                            .monospacedDigit()
+                        healthSuffix
+                    }
                 }
             } else {
                 Text("Connected")
             }
+        }
+    }
+
+    /// Latency while healthy, a warning when probes fail
+    @ViewBuilder
+    private var healthSuffix: some View {
+        switch health {
+        case .good(let latency):
+            Text(" · \(Int(latency.rounded())) ms").monospacedDigit()
+        case .failing:
+            Text(" · no reply").foregroundStyle(.orange)
+        case .unresponsive:
+            Text(" · not responding").foregroundStyle(.orange)
+        case .unknown:
+            EmptyView()
         }
     }
 }
@@ -333,6 +389,7 @@ private struct SetupBanner: View {
 private struct PanelServerRow: View {
     let server: VPNServer
     let tunnel: TunnelStatus?
+    let live: TunnelLive?
     let hasPassword: Bool
     let onToggle: () -> Void
 
@@ -369,7 +426,7 @@ private struct PanelServerRow: View {
 
                 if let tunnel {
                     Circle()
-                        .fill(tunnel.isConnected ? Color.green : Color.orange)
+                        .fill(tunnel.isConnected && live?.health.isProblem != true ? Color.green : Color.orange)
                         .frame(width: 8, height: 8)
                 } else if hovering {
                     Text(hasPassword ? "Connect" : "Edit")
