@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.8.0
+
+### Added
+- **Tunnel health check**: connected tunnels are pinged through their own interface every 20 seconds. The panel shows the latency, and a tunnel that stops answering is restarted when automatic reconnect is on (otherwise you get a notification). A host that never answers switches the check off for that connection instead of restarting a good tunnel. Optional **Health check host** per server, **Settings → General → Check tunnel health** to turn it off, `fortibar edit --health-host` and `fortibar settings --health-check`
+- **Sleep and network changes**: on wake-up and when the network changes, tunnels are checked within seconds and a dead one is replaced without waiting for openfortivpn to notice; a tunnel waiting out a long reconnect delay retries right away on wake-up
+- **Statistics**: the panel shows traffic and its current speed per tunnel; the new **Settings → Statistics** tab shows seven days of connected time, interruptions and traffic per server, kept in `stats.json` for 90 days
+
 ## v1.7.0
 
 ### Added

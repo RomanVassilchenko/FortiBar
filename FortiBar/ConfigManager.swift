@@ -95,6 +95,12 @@ class ConfigManager {
         saveConfig(newConfig)
     }
     
+    func saveHealthCheck(_ enabled: Bool) {
+        var newConfig = config
+        newConfig.healthCheck = enabled
+        saveConfig(newConfig)
+    }
+    
     func createDefaultConfig() {
         let path = ConfigManager.configPath
         let directory = path.deletingLastPathComponent()

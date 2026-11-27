@@ -100,6 +100,7 @@ enum CommandLineTool {
                     "static_routes": server.staticRoutes,
                     "auto_connect": server.autoConnect,
                     "auto_reconnect": server.autoReconnect,
+                    "health_check_host": server.healthCheckHost.map { $0 as Any } ?? NSNull(),
                     "state": state?.tunnels.first { $0.id == server.id }?.state ?? "disconnected"
                 ]
                 if let error = state?.errors[server.id] {
@@ -440,7 +441,7 @@ enum CommandLineTool {
           add <name> --host <host> --user <user> [server options]
           edit <server> [server options] [--name <new name>]
           remove <server> [--yes]             also deletes the saved password
-          settings [--allow-multiple on|off] [--openfortivpn-path <path>] [--json]
+          settings [--allow-multiple on|off] [--health-check on|off] [--openfortivpn-path <path>] [--json]
           permission [status|install|update]  sudo rule for openfortivpn and static routes
           version
 
@@ -455,6 +456,9 @@ enum CommandLineTool {
           --auto-connect | --no-auto-connect  connect when FortiBar starts
           --auto-reconnect | --no-auto-reconnect
                                               reconnect when the tunnel drops, until disconnected
+          --health-host <host> | --no-health-host
+                                              host inside the tunnel that the health check pings
+                                              (default: the tunnel's far end)
 
         <server> is a name, a unique name prefix (case-insensitive) or an id.
         Commands run through the FortiBar app, which is started in the background if needed.
