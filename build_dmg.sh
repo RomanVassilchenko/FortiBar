@@ -11,9 +11,11 @@ APP_NAME="FortiBar"
 BUILD_DIR="build"
 DMG_DIR="dmg_contents"
 
-# Stable self-signed certificate: keeps the app's identity (and its Keychain access)
-# the same across updates. Without it the build falls back to an ad-hoc signature.
-SIGN_NAME="FortiBar Self-Signed"
+# Stable signing identity: keeps the app's identity (and its Keychain access) the same across
+# updates. An "Apple Development" certificate comes first: it carries a Team ID, so Keychain
+# access survives new builds. The older "FortiBar Self-Signed" certificate is the fallback;
+# without either the build is signed ad hoc.
+SIGN_NAMES=("Apple Development:" "FortiBar Self-Signed")
 
 # Version comes from MARKETING_VERSION in the Xcode project
 VERSION=$(xcodebuild -project "$APP_NAME.xcodeproj" \
@@ -65,18 +67,27 @@ fi
 
 echo "✅ Build successful"
 
-# Re-sign with the self-signed certificate when it is on the keychain search list.
+# Re-sign with the first of those certificates found on the keychain search list.
 # Looked up by hash because codesign rejects untrusted certificates by name.
-SIGN_IDENTITY="${SIGN_IDENTITY:-$(security find-identity -p codesigning 2>/dev/null \
-    | awk -v name="\"$SIGN_NAME\"" 'index($0, name) {print $2; exit}')}"
+SIGN_IDENTITY="${SIGN_IDENTITY:-}"
+if [ -z "$SIGN_IDENTITY" ]; then
+    IDENTITIES=$(security find-identity -p codesigning 2>/dev/null)
+    for name in "${SIGN_NAMES[@]}"; do
+        SIGN_IDENTITY=$(awk -v name="\"$name" 'index($0, name) {print $2; exit}' <<< "$IDENTITIES")
+        if [ -n "$SIGN_IDENTITY" ]; then
+            SIGN_NAME=$(awk -v name="\"$name" 'index($0, name) {sub(/^[^"]*"/, ""); sub(/"[^"]*$/, ""); print; exit}' <<< "$IDENTITIES")
+            break
+        fi
+    done
+fi
 
 if [ -n "$SIGN_IDENTITY" ]; then
-    echo "🔏 Signing with \"$SIGN_NAME\" ($SIGN_IDENTITY)..."
+    echo "🔏 Signing with \"${SIGN_NAME:-$SIGN_IDENTITY}\" ($SIGN_IDENTITY)..."
     codesign --force --options runtime --timestamp=none \
         --preserve-metadata=entitlements \
         --sign "$SIGN_IDENTITY" "$APP_PATH"
 else
-    echo "⚠️  \"$SIGN_NAME\" not found in the keychain: ad-hoc signature."
+    echo "⚠️  No \"Apple Development\" or \"FortiBar Self-Signed\" certificate in the keychain: ad-hoc signature."
     echo "    Users will get a Keychain prompt after updating to this build."
 fi
 codesign --verify --deep --strict "$APP_PATH"
