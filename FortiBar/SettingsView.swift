@@ -1069,7 +1069,13 @@ class SettingsViewModel: ObservableObject {
     }
 
     private func refreshPasswordState() {
-        serversWithoutPassword = Set(servers.filter { KeychainHelper.read(for: $0.id)?.isEmpty ?? true }.map(\.id))
+        let ids = servers.map(\.id)
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let withPassword = KeychainHelper.serverIDsWithPassword()
+            DispatchQueue.main.async {
+                self?.serversWithoutPassword = Set(ids).subtracting(withPassword)
+            }
+        }
     }
 
     func loadLogs() {

@@ -117,7 +117,7 @@ Quitting FortiBar (⌘Q, logout or `SIGTERM`) disconnects every tunnel first, so
 
 ### Tunnel health
 
-A tunnel can stay "connected" while it no longer carries traffic: after the Mac sleeps, or when Wi-Fi switches to another network. FortiBar pings the far end of each connected tunnel (or the server's **Health check host**) every 20 seconds, through the tunnel's own interface. The panel shows the latency; after three missed replies in a row it shows "not responding".
+A tunnel can stay "connected" while it no longer carries traffic: after the Mac sleeps, or when Wi-Fi switches to another network. FortiBar pings each connected tunnel every 20 seconds: the server's **Health check host** if set, otherwise the far end of the tunnel or, if that does not answer, the DNS servers the gateway handed out, through the tunnel's own interface. The panel shows the latency; after three missed replies in a row it shows "not responding".
 
 - With **Reconnect automatically** on, the tunnel is restarted at that point. Without it, FortiBar sends a notification and keeps watching.
 - After wake-up or a network change the check runs within seconds and every 3 seconds for half a minute, so a dead tunnel is usually replaced within about 20 seconds instead of whenever openfortivpn notices. A tunnel waiting to reconnect retries right away on wake-up.
